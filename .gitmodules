@@ -1,0 +1,3 @@
+[submodule "gtex-pipeline"]
+	path = gtex-pipeline
+	url = https://github.com/broadinstitute/gtex-pipeline.git

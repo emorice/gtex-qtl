@@ -3,7 +3,9 @@ GTEx QTL calling pipeline
 """
 
 import os
+import re
 import gzip
+import contextlib
 import urllib.request
 import shutil
 import subprocess
@@ -31,31 +33,68 @@ def broad_wdl(path):
     return os.path.join(self_dir, 'gtex-pipeline', path)
 
 # download public expression files
-@pbl.step(vtag='0.2: return path')
-def urlretrieve(url, _galp):
+@pbl.step(vtag='0.3: suffixes')
+def urlretrieve(url, _galp, preserve_suffix=True, gunzip=False):
     """
     Download file from url and check it in the store
     """
-    to_path = _galp.new_path()
-    with urllib.request.urlopen(url) as in_fd:
-        with open(to_path, 'wb') as out_fd:
-            shutil.copyfileobj(in_fd, out_fd)
+
+    if preserve_suffix:
+        # Try to preserve the file extension as a dowstream step may rely on it
+        # for file typing
+        suffix = '.' + '.'.join(url.split('/')[-1].split('.')[1:])
+        if gunzip:
+            suffix = re.sub('.gz$', '', suffix)
+    else:
+        suffix = ''
+    to_path = _galp.new_path() + suffix
+
+    with contextlib.ExitStack() as stack:
+        in_fd = stack.enter_context(urllib.request.urlopen(url))
+        if gunzip:
+            in_fd = stack.enter_context(gzip.open(in_fd))
+        out_fd = stack.enter_context(open(to_path, 'wb'))
+        shutil.copyfileobj(in_fd, out_fd)
     return to_path
+
+@pbl.step(vtag='0.2: file extension')
+def gct_drop_id(src_path, _galp):
+    """
+    Drop the extra "id" column present in the public expression files
+    """
+    dst_path = _galp.new_path() + '.gct.gz'
+    with gzip.open(src_path, 'rt', encoding='ascii') as src:
+        with gzip.open(dst_path, 'wt', encoding='ascii') as dst:
+            # Headers
+            dst.write(src.readline())
+            dst.write(src.readline())
+
+            # Table head
+            line = src.readline()
+            if not line.startswith('id\t'):
+                raise TypeError('No extra id column at beginning of table')
+            dst.write(line.split('\t', maxsplit=1)[1])
+
+            # Table body
+            for line in src:
+                dst.write(line.split('\t', maxsplit=1)[1])
+
+    return dst_path
 
 _GTEX_BASE_URL = 'https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/'
 
-wb_tpm = urlretrieve(_GTEX_BASE_URL +
-        'gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz')
+wb_tpm = gct_drop_id(urlretrieve(_GTEX_BASE_URL +
+        'gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'))
 
-wb_counts = urlretrieve(_GTEX_BASE_URL +
-        'gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz')
+wb_counts = gct_drop_id(urlretrieve(_GTEX_BASE_URL +
+        'gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'))
 
 _GTEX_GENE_MODEL_URL = (
     'https://personal.broadinstitute.org/francois/topmed/'
     'gencode.v26.GRCh38.ERCC.genes.gtf.gz'
     )
 
-gene_model = urlretrieve(_GTEX_GENE_MODEL_URL)
+gene_model = urlretrieve(_GTEX_GENE_MODEL_URL, gunzip=True)
 
 @pbl.step
 def sample_ids(counts):
@@ -69,10 +108,11 @@ def sample_ids(counts):
 
         ids = header.strip().split()
 
-        generic_ids, gtex_ids = ids[:3], ids[3:]
+        # Name, Description, [samples]
+        generic_ids, gtex_ids = ids[:2], ids[2:]
 
         if any(gen_id.startswith('GTEX') for gen_id in generic_ids):
-            raise TypeError('Expected 3 non-GTEX columns at start of file')
+            raise TypeError('Expected 2 non-GTEX columns at start of file')
         if not all(gtex_id.startswith('GTEX') for gtex_id in gtex_ids):
             raise TypeError('Expected only GTEX ids after third column')
 
@@ -143,4 +183,4 @@ fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
         expression_bed=prepared_expression['expression_bed']
         )
 
-default_target = fastqtl
+default_target = prepared_expression # fastqtl

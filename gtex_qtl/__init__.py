@@ -13,6 +13,8 @@ import subprocess
 import galp
 import wdl_galp
 
+from . import utils
+
 try:
     import local_settings
 except ModuleNotFoundError:
@@ -28,7 +30,11 @@ def broad_wdl(path):
         path: path to the wanted wdl file relative to the root of the Broad
             repository
     """
-    self_dir = os.path.dirname(os.path.realpath(__file__))
+    # Containing directory
+    self_dir = os.path.dirname(
+            # Package dir itself
+            os.path.dirname(os.path.realpath(__file__))
+                )
 
     return os.path.join(self_dir, 'gtex-pipeline', path)
 
@@ -131,7 +137,7 @@ def sample_participant_lookup(sample_ids, _galp):
             print(f'{sample_id}\t{participant_id}', file=stream)
     return path
 
-@pbl.step
+@pbl.step(vtag='0.2: both paths')
 def indexed_vcf(_galp):
     """
     Symlink then index with tabix the vcf given in local_settings
@@ -142,11 +148,12 @@ def indexed_vcf(_galp):
         path
         )
     subprocess.run(['tabix', path], check=True)
+    index_path = path + '.tbi'
 
-    if not os.path.exists(path + '.tbi'):
+    if not os.path.exists(index_path):
         raise RuntimeError('Tabix index not created')
 
-    return path
+    return path, index_path
 
 @pbl.step
 def chr_list(indexed_vcf, _galp):
@@ -155,10 +162,12 @@ def chr_list(indexed_vcf, _galp):
     """
     path = _galp.new_path()
     with open(path, 'w') as fobj:
-        subprocess.run(['tabix', '-l', indexed_vcf], stdout=fobj, check=True)
+        subprocess.run(['tabix', '-l', indexed_vcf[0]], stdout=fobj, check=True)
     return path
 
-# various normalization steps
+# 1) various normalization steps
+PREFIX='wb' # not really used but must be set to some string
+
 prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
         **{ f'eqtl_prepare_expression.{key}': value
             for key, value in {
@@ -168,7 +177,7 @@ prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
                 'sample_participant_ids':
                     sample_participant_lookup(counts=wb_counts),
                 'vcf_chr_list': chr_list,
-                'prefix': 'wb',
+                'prefix': PREFIX,
                 # Runtime section
                 'memory': 0,
                 'disk_space': 0,
@@ -177,10 +186,60 @@ prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
             }.items()
         }
     )
+expression_file = prepared_expression[
+            'eqtl_prepare_expression_workflow'
+            '.eqtl_prepare_expression'
+            '.expression_bed'
+            ]
 
-# run the fastqtl tool through WDL
-fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
-        expression_bed=prepared_expression['expression_bed']
+# 2) PEER factors
+peer_factors = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
+        ** { f'eqtl_peer_factors.{key}': value
+            for key, value in {
+                'expression_file': expression_file,
+                'prefix': PREFIX,
+                'num_peer': 60,  # "60 factors for N ≥ 350"
+                # runtime
+                'memory': 0,
+                'disk_space': 0,
+                'num_threads': 64,
+                'num_preempt': 0,
+                }.items()
+            }
         )
 
-default_target = prepared_expression # fastqtl
+# 3) Genotype PCs and combine covariates
+
+@pbl.step(vtag='0.3: fix order')
+def extract_covariates(subject_path, sample_path, _galp):
+    """
+    Generate a covariate file with extra covariates
+    """
+    dst_path = _galp.new_path()
+    utils.extract_covariates(
+            subject_path=subject_path,
+            sample_path=sample_path
+        ).to_csv(
+            dst_path,
+            sep='\t',
+            index=False
+        )
+    return dst_path
+
+additional_covariates = extract_covariates(
+        subject_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE,
+        sample_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE
+        )
+
+# 4) run fastqtl
+fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
+        expression_bed=expression_file,
+        expression_bed_index=prepared_expression[
+            'eqtl_prepare_expression_workflow'
+            '.eqtl_prepare_expression'
+            '.expression_bed_index'],
+        vcf=indexed_vcf[0], vcf_index=indexed_vcf[1],
+        prefix=PREFIX,
+        )
+
+default_target = peer_factors # fastqtl

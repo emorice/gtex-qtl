@@ -10,6 +10,8 @@ import urllib.request
 import shutil
 import subprocess
 
+import pandas as pd
+
 import galp
 import wdl_galp
 
@@ -19,6 +21,8 @@ try:
     import local_settings
 except ModuleNotFoundError:
     pass
+
+# pylint: disable=redefined-outer-name
 
 pbl = galp.StepSet()
 
@@ -38,7 +42,37 @@ def broad_wdl(path):
 
     return os.path.join(self_dir, 'gtex-pipeline', path)
 
-# download public expression files
+# 0.1) Extract additional covariates and genotyped subject list
+# =============================================================
+
+pbl.bind(subject_phenotypes_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE)
+pbl.bind(sample_attributes_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE)
+
+@pbl.step(vtag='0.5: naming', items=2)
+def additional_covariates(subject_phenotypes_path, sample_attributes_path, _galp):
+    """
+    Generate a covariate file with extra covariates.
+
+    Also returns the list of the available subject IDs. Availability mostly
+    means that a WGS sample was found in the metadata files for a given subject.
+    """
+    dst_path = _galp.new_path()
+
+    cov_df = utils.extract_covariates(
+            subject_path=subject_phenotypes_path,
+            sample_path=sample_attributes_path
+        )
+
+    cov_df.to_csv(
+            dst_path,
+            sep='\t',
+            index=False
+        )
+    return dst_path, list(cov_df.columns[1:])
+
+# 0.2) Download public expression files and gene model
+# ====================================================
+
 @pbl.step(vtag='0.3: suffixes')
 def urlretrieve(url, _galp, preserve_suffix=True, gunzip=False):
     """
@@ -63,11 +97,14 @@ def urlretrieve(url, _galp, preserve_suffix=True, gunzip=False):
         shutil.copyfileobj(in_fd, out_fd)
     return to_path
 
-@pbl.step(vtag='0.2: file extension')
-def gct_drop_id(src_path, _galp):
+@pbl.step
+def gct_filter_columns(src_path, additional_covariates, _galp):
     """
-    Drop the extra "id" column present in the public expression files
+    Drop the extra "id" column present in the public expression files, and
+    subset samples with available genotype information.
     """
+    genotyped_subject_ids = additional_covariates[1]
+
     dst_path = _galp.new_path() + '.gct.gz'
     with gzip.open(src_path, 'rt', encoding='ascii') as src:
         with gzip.open(dst_path, 'wt', encoding='ascii') as dst:
@@ -75,24 +112,27 @@ def gct_drop_id(src_path, _galp):
             dst.write(src.readline())
             dst.write(src.readline())
 
-            # Table head
-            line = src.readline()
-            if not line.startswith('id\t'):
-                raise TypeError('No extra id column at beginning of table')
-            dst.write(line.split('\t', maxsplit=1)[1])
+            # Table
+            expr_df = pd.read_table(src)
 
-            # Table body
-            for line in src:
-                dst.write(line.split('\t', maxsplit=1)[1])
+            sample_ids = [
+                sample_id
+                for sample_id in expr_df.columns
+                if sample_id.startswith('GTEX-')
+                if f"GTEX-{sample_id.split('-')[1]}" in genotyped_subject_ids
+                ]
 
+            expr_df[["Name", "Description", *sample_ids]].to_csv(
+                    dst, sep='\t', index=False
+                    )
     return dst_path
 
 _GTEX_BASE_URL = 'https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/'
 
-wb_tpm = gct_drop_id(urlretrieve(_GTEX_BASE_URL +
+wb_tpm = gct_filter_columns(urlretrieve(_GTEX_BASE_URL +
         'gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'))
 
-wb_counts = gct_drop_id(urlretrieve(_GTEX_BASE_URL +
+wb_counts = gct_filter_columns(urlretrieve(_GTEX_BASE_URL +
         'gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'))
 
 _GTEX_GENE_MODEL_URL = (
@@ -102,10 +142,14 @@ _GTEX_GENE_MODEL_URL = (
 
 gene_model = urlretrieve(_GTEX_GENE_MODEL_URL, gunzip=True)
 
+
+# 0.3) Prepare lookup table and chromosome list
+# =============================================
+
 @pbl.step
-def sample_ids(counts):
+def expression_sample_ids(counts):
     """
-    Extract sample IDs from expression file
+    List sample IDs from expression file
     """
     with gzip.open(counts, 'rt') as stream:
         stream.readline() # Version tag
@@ -125,14 +169,14 @@ def sample_ids(counts):
         return gtex_ids
 
 @pbl.step
-def sample_participant_lookup(sample_ids, _galp):
+def sample_participant_lookup(expression_sample_ids, _galp):
     """
-    Generate a lookup file for participant IDs
+    Generate a lookup file for all sample IDs found in expression file
     """
     path = _galp.new_path()
-    with open(path, 'w') as stream:
+    with open(path, 'w', encoding='ascii') as stream:
         print('sample_id\tparticipant_id', file=stream)
-        for sample_id in sample_ids:
+        for sample_id in expression_sample_ids:
             participant_id = '-'.join(sample_id.split('-')[:2])
             print(f'{sample_id}\t{participant_id}', file=stream)
     return path
@@ -161,11 +205,13 @@ def chr_list(indexed_vcf, _galp):
     File with the chromosome list from indexed vcf
     """
     path = _galp.new_path()
-    with open(path, 'w') as fobj:
+    with open(path, 'wb') as fobj:
         subprocess.run(['tabix', '-l', indexed_vcf[0]], stdout=fobj, check=True)
     return path
 
-# 1) various normalization steps
+# 1) Prepare expression (filter and normalize)
+# ============================================
+
 PREFIX='wb' # not really used but must be set to some string
 
 prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
@@ -178,7 +224,7 @@ prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
                     sample_participant_lookup(counts=wb_counts),
                 'vcf_chr_list': chr_list,
                 'prefix': PREFIX,
-                # Runtime section
+                # Runtime section (not really used)
                 'memory': 0,
                 'disk_space': 0,
                 'num_threads': 0,
@@ -192,13 +238,45 @@ expression_file = prepared_expression[
             '.expression_bed'
             ]
 
-# 2) PEER factors
-peer_factors = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
+# 1.1) Prepare genotype PCs
+# =========================
+
+@pbl.step
+def filter_format_pcs(genotype_pcs_path, _galp):
+    """
+    Filter first PCs and format them into a covariate file
+    """
+    pcs_df = pd.read_table(genotype_pcs_path,
+            usecols = ['FID'] + [ f'PC{i+1}' for i in range(5) ]
+            )
+
+    pcs_df['SUBJID'] = 'GTEX-' + pcs_df['FID'].str.split('-', expand=True)[1]
+    pcs_df = (pcs_df
+        .drop('FID', axis=1)
+        .set_index('SUBJID')
+        .T
+        .reset_index()
+        .rename({'index': 'ID'}, axis=1)
+        )
+
+    dst_path = _galp.new_path()
+    pcs_df.to_csv(dst_path, sep='\t', index=False)
+    return dst_path
+
+gpcs_covariates = filter_format_pcs(local_settings.GTEX_GENOTYPE_PCS_FILE)
+
+# 2) PEER factors and 3) combine covariates
+# =========================================
+
+combined_covariates = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
         ** { f'eqtl_peer_factors.{key}': value
             for key, value in {
                 'expression_file': expression_file,
                 'prefix': PREFIX,
                 'num_peer': 60,  # "60 factors for N ≥ 350"
+                # optional inputs
+                'genotype_pcs': gpcs_covariates,
+                'add_covariates': additional_covariates[0],
                 # runtime
                 'memory': 0,
                 'disk_space': 0,
@@ -208,30 +286,9 @@ peer_factors = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
             }
         )
 
-# 3) Genotype PCs and combine covariates
+# 4) Run fastqtl
+# ==============
 
-@pbl.step(vtag='0.3: fix order')
-def extract_covariates(subject_path, sample_path, _galp):
-    """
-    Generate a covariate file with extra covariates
-    """
-    dst_path = _galp.new_path()
-    utils.extract_covariates(
-            subject_path=subject_path,
-            sample_path=sample_path
-        ).to_csv(
-            dst_path,
-            sep='\t',
-            index=False
-        )
-    return dst_path
-
-additional_covariates = extract_covariates(
-        subject_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE,
-        sample_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE
-        )
-
-# 4) run fastqtl
 fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
         expression_bed=expression_file,
         expression_bed_index=prepared_expression[
@@ -242,4 +299,4 @@ fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
         prefix=PREFIX,
         )
 
-default_target = peer_factors # fastqtl
+default_target = combined_covariates # fastqtl

@@ -316,6 +316,8 @@ fastqtl = wdl_galp.run(local_wdl('fastqtl.wdl'),
         chunks=100, # from readme
         fdr=0.05, # from 2020 methods
         annotation_gtf=gene_model,
+        # optional parameters
+        maf_threshold=0.01, # from 2020 methods
         # runtime parameters
         **{
             f'{step}.{key}': value

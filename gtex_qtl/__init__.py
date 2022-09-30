@@ -42,6 +42,16 @@ def broad_wdl(path):
 
     return os.path.join(self_dir, 'gtex-pipeline', path)
 
+def local_wdl(path):
+    """
+    Build path to our modified or new wdl scripts
+    """
+    # Package dir itself
+    self_dir = os.path.dirname(os.path.realpath(__file__))
+
+    return os.path.join(self_dir, path)
+
+
 # 0.1) Extract additional covariates and genotyped subject list
 # =============================================================
 
@@ -289,7 +299,7 @@ combined_covariates = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
 # 4) Run fastqtl
 # ==============
 
-fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
+fastqtl = wdl_galp.run(local_wdl('fastqtl.wdl'),
         expression_bed=expression_file,
         expression_bed_index=prepared_expression[
             'eqtl_prepare_expression_workflow'
@@ -297,6 +307,31 @@ fastqtl = wdl_galp.run(broad_wdl('qtl/fastqtl.wdl'),
             '.expression_bed_index'],
         vcf=indexed_vcf[0], vcf_index=indexed_vcf[1],
         prefix=PREFIX,
+        covariates=combined_covariates[
+            'eqtl_peer_factors_workflow'
+            '.eqtl_peer_factors'
+            '.combined_covariates'
+            ],
+        permutations="1000 10000", # from readme and 2020 methods
+        chunks=100, # from readme
+        fdr=0.05, # from 2020 methods
+        annotation_gtf=gene_model,
+        # runtime parameters
+        **{
+            f'{step}.{key}': value
+            for key, value in {
+                    'memory': 0,
+                    'disk_space': 0,
+                    'num_threads': 1,
+                    'num_preempt': 0,
+                }.items()
+            for step in [
+                'fastqtl_nominal',
+                'fastqtl_permutations_scatter',
+                'fastqtl_permutations_merge',
+                'fastqtl_postprocess'
+                ]
+            }
         )
 
-default_target = combined_covariates # fastqtl
+default_target = fastqtl

@@ -347,7 +347,7 @@ def untar(path, _galp):
     """
     dst_path = _galp.new_path()
     os.makedirs(dst_path, exist_ok=True)
-    shutil.unpack_archive(path, dst_path, "tar")
+    shutil.unpack_archive(path, dst_path)
     return dst_path
 
 pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
@@ -385,7 +385,15 @@ expression_shapes_cmp = {
         'computed': expression_shape(expression_file)
         }
 
+reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
+        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
+        ))
+
+reference_results = untar(urlretrieve(_GTEX_BASE_URL +
+    'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
+    ))
+
 # END
 # ===
 
-default_target = expression_shapes_cmp # fastqtl
+default_target = reference_results # fastqtl

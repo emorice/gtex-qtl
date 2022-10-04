@@ -137,13 +137,13 @@ def gct_filter_columns(src_path, additional_covariates, _galp):
                     )
     return dst_path
 
-_GTEX_BASE_URL = 'https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/'
+_GTEX_BASE_URL = 'https://storage.googleapis.com/gtex_analysis_v8/'
 
 wb_tpm = gct_filter_columns(urlretrieve(_GTEX_BASE_URL +
-        'gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'))
+        'rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'))
 
 wb_counts = gct_filter_columns(urlretrieve(_GTEX_BASE_URL +
-        'gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'))
+        'rna_seq_data/gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'))
 
 _GTEX_GENE_MODEL_URL = (
     'https://personal.broadinstitute.org/francois/topmed/'
@@ -336,4 +336,56 @@ fastqtl = wdl_galp.run(local_wdl('fastqtl.wdl'),
             }
         )
 
-default_target = fastqtl
+# 5) Reference intermediate results
+# =================================
+
+
+@pbl.step
+def untar(path, _galp):
+    """
+    Extract tar archive
+    """
+    dst_path = _galp.new_path()
+    os.makedirs(dst_path, exist_ok=True)
+    shutil.unpack_archive(path, dst_path, "tar")
+    return dst_path
+
+pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
+        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
+        )))
+
+@pbl.step
+def reference_tissue_expression(reference_expression, tissue_name):
+    """
+    Path to specific tissue in extracted archive
+
+    Tissue name is capitalized, underscore separated
+    """
+    return os.path.join(reference_expression,
+            'GTEx_Analysis_v8_eQTL_expression_matrices',
+            f'{tissue_name}.v8.normalized_expression.bed.gz'
+            )
+
+@pbl.step
+def expression_shape(expression_file):
+    """
+    Extract basic counts from expression file
+    """
+    expr_df = pd.read_table(expression_file)
+
+    return {
+        'num_genes': len(expr_df),
+        'num_samples': sum(col.startswith('GTEX-') for col in expr_df)
+        }
+
+expression_shapes_cmp = {
+        'reference': expression_shape(
+            reference_tissue_expression(tissue_name='Whole_Blood')
+            ),
+        'computed': expression_shape(expression_file)
+        }
+
+# END
+# ===
+
+default_target = expression_shapes_cmp # fastqtl

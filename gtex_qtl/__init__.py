@@ -11,6 +11,7 @@ import shutil
 import subprocess
 
 import pandas as pd
+import plotly.graph_objects as go
 
 import galp
 import wdl_galp
@@ -354,8 +355,10 @@ pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
         'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
         )))
 
+pbl.bind(ref_tissue_name='Whole_Blood')
+
 @pbl.step
-def reference_tissue_expression(reference_expression, tissue_name):
+def reference_tissue_expression(reference_expression, ref_tissue_name):
     """
     Path to specific tissue in extracted archive
 
@@ -363,7 +366,7 @@ def reference_tissue_expression(reference_expression, tissue_name):
     """
     return os.path.join(reference_expression,
             'GTEx_Analysis_v8_eQTL_expression_matrices',
-            f'{tissue_name}.v8.normalized_expression.bed.gz'
+            f'{ref_tissue_name}.v8.normalized_expression.bed.gz'
             )
 
 @pbl.step
@@ -379,9 +382,7 @@ def expression_shape(expression_file):
         }
 
 expression_shapes_cmp = {
-        'reference': expression_shape(
-            reference_tissue_expression(tissue_name='Whole_Blood')
-            ),
+        'reference': expression_shape(reference_tissue_expression),
         'computed': expression_shape(expression_file)
         }
 
@@ -389,11 +390,64 @@ reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
         'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
         ))
 
-reference_results = untar(urlretrieve(_GTEX_BASE_URL +
+pbl.bind(reference_results=untar(urlretrieve(_GTEX_BASE_URL +
     'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
-    ))
+    )))
+
+@pbl.step
+def reference_tissue_egenes(reference_results, ref_tissue_name):
+    """
+    Path to specific tissue results
+    """
+    return os.path.join(reference_results,
+        'GTEx_Analysis_v8_eQTL',
+        f'{ref_tissue_name}.v8.egenes.txt.gz'
+        )
+
+pbl.bind(computed_tissue_egenes=fastqtl['fastqtl_workflow.fastqtl_permutations_merge.genes'])
+
+@pbl.view
+def qvalues_cmp(reference_tissue_egenes, computed_tissue_egenes):
+    """
+    Scatter plot of log-q-values
+    """
+    merged = (
+        pd.read_table(reference_tissue_egenes)
+        .merge(
+            pd.read_table(computed_tissue_egenes),
+            on='gene_id',
+            suffixes=['_reference', '_computed']
+            )
+        )
+
+    return go.Figure(
+        data=[
+            go.Scatter(
+                x=merged['qval_reference'],
+                y=merged['qval_computed'],
+                mode='markers',
+                marker={'size': 3},
+                name='recomputed'
+                ),
+            go.Scatter(
+                x=merged['qval_reference'],
+                y=merged['qval_reference'],
+                mode='lines',
+                name='y = x'
+                )
+            ],
+        layout={
+            'title': 'Comparison of published and reproduced gene statistics',
+            'xaxis': {'type': 'linear', 'title': 'Gene-level q-value (published)'},
+            'yaxis': {
+                'type': 'linear', 
+                'title': 'Gene-level q-value (recomputed)'
+                },
+            'height': 1000,
+            }
+        )
 
 # END
 # ===
 
-default_target = reference_results # fastqtl
+default_target = qvalues_cmp # fastqtl

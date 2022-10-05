@@ -1,3 +1,10 @@
+# Lightly modified from gtex-pipeline/qtl/fastqtl.wdl
+# Summary of changes:
+#  * Removed `touch` hack for tabix. The hack is unnecessary for our platform
+#    but causes the pipeline to fail due to the input files not being writeable.
+#  * Covariate file made optional to allow workflow variants where this step is
+#    handled explicitely outside of fastQTL.
+
 task fastqtl_nominal {
 
     File expression_bed
@@ -5,7 +12,7 @@ task fastqtl_nominal {
     File vcf
     File vcf_index
     String prefix
-    File covariates
+    File? covariates
 
     String? cis_window
     Int? ma_sample_threshold
@@ -20,7 +27,7 @@ task fastqtl_nominal {
     command {
         # nominal pass
         /opt/fastqtl/python/run_FastQTL_threaded.py ${vcf} ${expression_bed} ${prefix} \
-            --covariates ${covariates} \
+            ${"--covariates " + covariates} \
             ${"--window " + cis_window} \
             ${"--ma_sample_threshold " + ma_sample_threshold} \
             ${"--maf_threshold " + maf_threshold} \
@@ -54,7 +61,7 @@ task fastqtl_permutations_scatter {
     File vcf
     File vcf_index
     String prefix
-    File covariates
+    File? covariates
 
     Int current_chunk
     Int chunks
@@ -73,7 +80,7 @@ task fastqtl_permutations_scatter {
         # permutation pass
         /opt/fastqtl/python/run_chunk.py ${vcf} ${expression_bed} ${prefix} ${current_chunk} ${chunks}\
             --permute ${permutations} \
-            --covariates ${covariates} \
+            ${"--covariates " + covariates} \
             ${"--window " + cis_window} \
             ${"--phenotype_groups " + phenotype_groups} \
             ${"--ma_sample_threshold " + ma_sample_threshold} \
@@ -187,7 +194,7 @@ workflow fastqtl_workflow {
     File vcf
     File vcf_index
     String prefix
-    File covariates
+    File? covariates
 
     String permutations
     Int chunks
@@ -203,8 +210,8 @@ workflow fastqtl_workflow {
     call fastqtl_nominal {
         input:
             chunks=chunks, prefix=prefix,
-            expression_bed=expression_bed, expression_bed_index=expression_bed_index, 
-            vcf=vcf, vcf_index=vcf_index, 
+            expression_bed=expression_bed, expression_bed_index=expression_bed_index,
+            vcf=vcf, vcf_index=vcf_index,
             covariates=covariates, cis_window=cis_window,
             ma_sample_threshold=ma_sample_threshold, maf_threshold=maf_threshold
     }

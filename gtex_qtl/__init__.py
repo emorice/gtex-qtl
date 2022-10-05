@@ -1,5 +1,8 @@
 """
 GTEx QTL calling pipeline
+
+This file defines the reference reproduction pipeline. Sister modules contain
+pipeline variants.
 """
 
 import os
@@ -17,6 +20,7 @@ import galp
 import wdl_galp
 
 from . import utils
+from . import residualize
 
 try:
     import local_settings
@@ -192,10 +196,34 @@ def sample_participant_lookup(expression_sample_ids, _galp):
             print(f'{sample_id}\t{participant_id}', file=stream)
     return path
 
+@pbl.step(vtag='0.2 extension')
+def tabix(src_path, _galp):
+    """
+    Compress and index file with tabix
+    """
+    dst_path = _galp.new_path()
+
+    # Try to preserve extension
+    dst_path += '.'.join([''] + os.path.basename(src_path).split('.')[1:])
+    dst_path += '.gz'
+
+    with open(dst_path, 'wb') as stream:
+        subprocess.run(['bgzip', '-c', src_path], stdout=stream, check=True)
+
+    subprocess.run(['tabix', dst_path], check=True)
+    index_path = dst_path + '.tbi'
+
+    if not os.path.exists(index_path):
+        raise RuntimeError('Tabix index not created')
+
+    return dst_path, index_path
+
 @pbl.step(vtag='0.2: both paths')
 def indexed_vcf(_galp):
     """
     Symlink then index with tabix the vcf given in local_settings
+
+    TODO: delete and replace with `tabix` step
     """
     path = _galp.new_path()
     os.symlink(
@@ -243,10 +271,16 @@ prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
             }.items()
         }
     )
+
 expression_file = prepared_expression[
             'eqtl_prepare_expression_workflow'
             '.eqtl_prepare_expression'
             '.expression_bed'
+            ]
+expression_file_index = prepared_expression[
+            'eqtl_prepare_expression_workflow'
+            '.eqtl_prepare_expression'
+            '.expression_bed_index'
             ]
 
 # 1.1) Prepare genotype PCs
@@ -297,28 +331,32 @@ combined_covariates = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
             }
         )
 
-# 4) Run fastqtl
-# ==============
-
-fastqtl = wdl_galp.run(local_wdl('fastqtl.wdl'),
-        expression_bed=expression_file,
-        expression_bed_index=prepared_expression[
-            'eqtl_prepare_expression_workflow'
-            '.eqtl_prepare_expression'
-            '.expression_bed_index'],
-        vcf=indexed_vcf[0], vcf_index=indexed_vcf[1],
-        prefix=PREFIX,
-        covariates=combined_covariates[
+combined_covariates_file = combined_covariates[
             'eqtl_peer_factors_workflow'
             '.eqtl_peer_factors'
             '.combined_covariates'
-            ],
+            ]
+
+# 4) Run fastqtl
+# ==============
+
+def run_fastqtl(expression_files, covariates_file=None):
+    """
+    Meta step to build the fastqtl task
+    """
+    return wdl_galp.run(local_wdl('fastqtl.wdl'),
+        expression_bed=expression_files[0],
+        expression_bed_index=expression_files[1],
+        vcf=indexed_vcf[0], vcf_index=indexed_vcf[1],
+        prefix=PREFIX,
         permutations="1000 10000", # from readme and 2020 methods
         chunks=100, # from readme
         fdr=0.05, # from 2020 methods
         annotation_gtf=gene_model,
         # optional parameters
         maf_threshold=0.01, # from 2020 methods
+        **( {'covariates': covariates_file}
+            if covariates_file else {}),
         # runtime parameters
         **{
             f'{step}.{key}': value
@@ -337,8 +375,13 @@ fastqtl = wdl_galp.run(local_wdl('fastqtl.wdl'),
             }
         )
 
-# 5) Reference intermediate results
-# =================================
+fastqtl = run_fastqtl(
+        (expression_file, expression_file_index),
+        covariates_file=combined_covariates_file
+        )
+
+# 5) Get published results and compare
+# ====================================
 
 
 @pbl.step
@@ -440,14 +483,22 @@ def qvalues_cmp(reference_tissue_egenes, computed_tissue_egenes):
             'title': 'Comparison of published and reproduced gene statistics',
             'xaxis': {'type': 'linear', 'title': 'Gene-level q-value (published)'},
             'yaxis': {
-                'type': 'linear', 
+                'type': 'linear',
                 'title': 'Gene-level q-value (recomputed)'
                 },
             'height': 1000,
             }
         )
 
+# 6) Pre-residualization alternative
+# ==================================
+
+residualized_expression = tabix(residualize.residualize(expression_file,
+        combined_covariates_file))
+
+residualized_fastqtl = run_fastqtl(residualized_expression)
+
 # END
 # ===
 
-default_target = qvalues_cmp # fastqtl
+default_target = residualized_fastqtl

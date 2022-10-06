@@ -21,6 +21,7 @@ import wdl_galp
 
 from . import utils
 from . import residualize
+from . import compare
 
 try:
     import local_settings
@@ -498,7 +499,26 @@ residualized_expression = tabix(residualize.residualize(expression_file,
 
 residualized_fastqtl = run_fastqtl(residualized_expression)
 
+pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
+        compare.all_pvals(fastqtl),
+        compare.all_pvals(residualized_fastqtl)
+        ))
+
+@pbl.view
+def residualized_pvals_plot(res_vs_orig_raster):
+    """
+    Residualized vs original p-values for all pairs
+    """
+    fig = compare.plot_ds_scatter(res_vs_orig_raster)
+    fig.update_layout({
+        'title':
+        'Comparison of nominal p-values for all tested gene-variant pairs',
+        'xaxis.title': 'Reproduced p-value',
+        'yaxis.title': 'Pre-residualized p-value',
+        })
+    return fig
+
 # END
 # ===
 
-default_target = residualized_fastqtl
+default_target = residualized_pvals_plot #fastqtl

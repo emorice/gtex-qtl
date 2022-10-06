@@ -4,6 +4,7 @@ version = "0.1.dev1"
 dependencies = [
     "pandas",
     "plotly",
+    "datashader",
     "galp @ git+ssh://git@github.com/emorice/galp.git",
     "wdl_galp @ git+ssh://git@github.com/emorice/wdl-galp.git"
     ]

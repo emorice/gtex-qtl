@@ -491,8 +491,8 @@ def qvalues_cmp(reference_tissue_egenes, computed_tissue_egenes):
             }
         )
 
-# 6) Pre-residualization alternative
-# ==================================
+# 6) Pre-residualization alternatives
+# ===================================
 
 residualized_expression = tabix(residualize.residualize(expression_file,
         combined_covariates_file))
@@ -518,7 +518,18 @@ def residualized_pvals_plot(res_vs_orig_raster):
         })
     return fig
 
+blind_linear_expression = tabix(
+        residualize.residualize_blind_linear(
+            expression_file,
+            gpcs_covariates,
+            additional_covariates[0],
+            )
+        )
+
+blind_linear_fastqtl = run_fastqtl(blind_linear_expression)
+
+
 # END
 # ===
 
-default_target = residualized_pvals_plot #fastqtl
+default_target = blind_linear_fastqtl

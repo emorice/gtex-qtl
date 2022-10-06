@@ -6,6 +6,7 @@ dependencies = [
     "plotly",
     "datashader",
     "galp @ git+ssh://git@github.com/emorice/galp.git",
-    "wdl_galp @ git+ssh://git@github.com/emorice/wdl-galp.git"
+    "wdl_galp @ git+ssh://git@github.com/emorice/wdl-galp.git",
+    "gemz @ git+ssh://git@github.com/emorice/gemz.git"
     ]
 

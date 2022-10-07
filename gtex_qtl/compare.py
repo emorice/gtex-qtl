@@ -91,14 +91,18 @@ def plot_ds_scatter(ds_image_trend):
     img_dict['layer'] = 'below'
 
 
-    range_x = img_dict['x'], img_dict['x'] + img_dict['sizex']
-    range_y = img_dict['y'], img_dict['y'] + img_dict['sizey']
+    margin_ratio = 0.05
+    ranges = { k: (
+            img_dict[k] - margin_ratio * img_dict[f'size{k}'],
+            img_dict[k] + (1. + margin_ratio) * img_dict[f'size{k}']
+            ) for k in 'xy'
+            }
 
     # Generate figure
     fig = go.Figure(
         data=[
-            go.Scatter(x=range_x, y=range_x, mode='lines',
-                        line={'color': 'red'},
+            go.Scatter(x=ranges['x'], y=ranges['x'], mode='lines',
+                line={'color': 'red', 'width': 1},
                         name='y = x', showlegend=True),
             go.Scatter(x=trend['x'], y=trend['y'], mode='lines',
                         hovertext=[
@@ -112,10 +116,10 @@ def plot_ds_scatter(ds_image_trend):
         layout={
             'plot_bgcolor': 'white',
             'height': 1000,
-            'xaxis': { 'range': range_x,
+            'xaxis': { 'range': ranges['x'],
                       'ticks': 'outside', 'linecolor': 'black',
                       'showgrid': False, 'zerolinecolor': 'black'},
-            'yaxis': { 'range': range_y,
+            'yaxis': { 'range': ranges['y'],
                       'scaleanchor': 'x', 'scaleratio': img_dict['sizex'] / img_dict['sizey'],
                      'ticks': 'outside', 'linecolor': 'black',
                       'showgrid': False, 'zerolinecolor': 'black'},

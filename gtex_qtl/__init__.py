@@ -501,7 +501,8 @@ residualized_fastqtl = run_fastqtl(residualized_expression)
 
 pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
         compare.all_pvals(fastqtl),
-        compare.all_pvals(residualized_fastqtl)
+        compare.all_pvals(residualized_fastqtl),
+        log=True
         ))
 
 @pbl.view
@@ -528,8 +529,29 @@ blind_linear_expression = tabix(
 
 blind_linear_fastqtl = run_fastqtl(blind_linear_expression)
 
+pbl.bind(blind_vs_res_raster=compare.datashader_scatter(
+        compare.all_pvals(residualized_fastqtl),
+        compare.all_pvals(blind_linear_fastqtl),
+        log=True
+        ))
+
+@pbl.view
+def blind_pvals_plot(blind_vs_res_raster):
+    """
+    Blind linear vs residualized p-values for all pairs
+    """
+    fig = compare.plot_ds_scatter(blind_vs_res_raster)
+    fig.update_layout({
+        'title':
+        'Comparison of nominal p-values for all tested gene-variant pairs',
+        'xaxis.title': 'Pre-residualized p-value',
+        'yaxis.title': 'Blind linear p-value',
+        })
+    return fig
 
 # END
 # ===
 
-default_target = blind_linear_fastqtl
+plots = [ residualized_pvals_plot, blind_pvals_plot ]
+
+default_target = plots

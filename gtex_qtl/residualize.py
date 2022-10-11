@@ -56,8 +56,8 @@ def regress(expr_gs, cov_cs):
     """
     Regress expression against covariates and return residuals
     """
-    # Center covariates
-    cov_cs -= cov_cs.mean(axis=1, keepdims=True)
+    # Add the intercept pseudo-covariate
+    cov_cs = np.vstack((np.ones(expr_gs.shape[-1]), cov_cs))
 
     # Compute
     res_gs = (expr_gs - (
@@ -66,7 +66,7 @@ def regress(expr_gs, cov_cs):
 
     return res_gs
 
-@pbl.step(vtag='0.1: no gzip')
+@pbl.step(vtag='0.2: intercept')
 def residualize(prepared_expression, combined_covariates, _galp):
     """
     Perform the residualization as a separate step and write back the result as

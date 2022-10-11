@@ -554,4 +554,4 @@ def blind_pvals_plot(blind_vs_res_raster):
 
 plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = plots
+default_target = residualized_pvals_plot # plots

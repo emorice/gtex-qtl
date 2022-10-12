@@ -33,6 +33,68 @@ def all_pvals(results):
         .to_numpy()
     )
 
+@pbl.step
+def histogram(values, log=False, nbins=1000):
+    """
+    Pre-compute an histogram.
+
+    Silently discards infs/nans.
+    """
+    trans = np.log10 if log else (lambda x: x)
+
+    values = trans(values)
+
+    values = values[np.isfinite(values)]
+
+    hist = np.histogram(
+            values,
+            bins=nbins,
+            )
+
+    return {
+        'counts': hist[0],
+        'edges': hist[1],
+        'log': log
+        }
+
+@pbl.step
+def quantiles(values, num=1000):
+    """
+    Precompute quantiles
+    """
+    probas = np.linspace(0., 1, num+1)
+    quantiles = np.quantile(values, probas)
+    return probas, quantiles
+
+def plot_histogram(hist):
+    """
+    Render a pre-computed histogram
+    """
+
+    counts = hist['counts']
+    if hist['log']:
+        edges = np.exp(hist['edges'])
+    else:
+        edges = hist['edges']
+    middles = .5 * (edges[1:] + edges[:-1])
+
+    return go.Figure(
+            data=[
+                go.Bar(
+                    y=counts,
+                    x=middles,
+                    width=(edges[1:] - edges[:-1]) * 0.9,
+                    marker={'line': {'width': 0}}
+                    )
+                ],
+            layout={
+                'xaxis': {
+                    'type': 'log' if hist['log'] else 'linear',
+                    },
+                'width': 1200,
+                }
+            )
+
 @pbl.step(vtag='0.4: trend')
 def datashader_scatter(x, y, log=False):
     """

@@ -13,6 +13,7 @@ import urllib.request
 import shutil
 import subprocess
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -502,7 +503,7 @@ residualized_fastqtl = run_fastqtl(residualized_expression)
 pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
         compare.all_pvals(fastqtl),
         compare.all_pvals(residualized_fastqtl),
-        log=True
+        log=False
         ))
 
 @pbl.view
@@ -549,9 +550,79 @@ def blind_pvals_plot(blind_vs_res_raster):
         })
     return fig
 
+pbl.bind(pvals_hist=compare.histogram(
+    compare.all_pvals(residualized_fastqtl),
+    ))
+
+@pbl.view
+def pvals_histogram_plot(pvals_hist):
+    """
+    Histogram of p-values for all pairs
+    """
+    fig = compare.plot_histogram(pvals_hist)
+    fig.update_layout({
+        'title':
+        'Distribution of raw p-values for all tested gene-variant pairs',
+        'xaxis.title': 'p-value',
+        'yaxis.title': 'Number of gene-variant pairs'
+        })
+    return fig
+    log=True,
+
+pbl.bind(pvals_quantiles_ref=compare.quantiles(
+    compare.all_pvals(residualized_fastqtl)
+    ))
+pbl.bind(pvals_quantiles_alt=compare.quantiles(
+    compare.all_pvals(blind_linear_fastqtl)
+    ))
+
+#pbl.bind(qq_log=True)
+
+@pbl.view
+def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
+    """
+    Uniform qq plot
+    """
+
+    probas_alt, quantiles_alt = pvals_quantiles_alt
+
+    if pvals_quantiles_ref is None:
+        probas_ref, quantiles_ref = probas_alt, probas_alt
+    else:
+        probas_ref, quantiles_ref = pvals_quantiles_ref
+
+    if not np.allclose(probas_ref, probas_alt):
+        raise ValueError('Need matching probas')
+
+    return go.Figure(
+        data=[
+            go.Scatter(
+                x=quantiles_ref,
+                y=quantiles_alt,
+                mode='lines',
+                name='quantiles'
+            ),
+            go.Scatter(
+                x=quantiles_ref,
+                y=quantiles_ref,
+                mode='lines',
+                name='y = x'
+                )
+            ],
+        layout={
+            'width': 1000,
+            'height': 1000,
+            'xaxis.title': 'Reference p-values quantiles',
+            'xaxis.type': 'log' if qq_log else 'linear',
+            'yaxis.title': 'Alternative p-values quantiles',
+            'yaxis.type': 'log' if qq_log else 'linear',
+            }
+        )
+        
+
 # END
 # ===
 
 plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = residualized_pvals_plot # plots
+default_target = pvals_qq_plot # plots

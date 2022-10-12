@@ -91,7 +91,7 @@ def residualize(prepared_expression, combined_covariates, _galp):
     write_expression(dst_path, res_gs, samples, expr_meta)
     return dst_path
 
-@pbl.step
+@pbl.step(vtag='0.2: intercept')
 def residualize_blind_linear(
         prepared_expression, gpcs, extra_covariates,
         _galp):

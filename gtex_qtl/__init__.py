@@ -576,7 +576,7 @@ pbl.bind(pvals_quantiles_alt=compare.quantiles(
     compare.all_pvals(blind_linear_fastqtl)
     ))
 
-#pbl.bind(qq_log=True)
+pbl.bind(qq_log=True)
 
 @pbl.view
 def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
@@ -600,7 +600,8 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
                 x=quantiles_ref,
                 y=quantiles_alt,
                 mode='lines',
-                name='quantiles'
+                name='quantiles',
+                hovertext=[f'{100 * p:.6g} %' for p in probas_ref],
             ),
             go.Scatter(
                 x=quantiles_ref,
@@ -612,10 +613,16 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
         layout={
             'width': 1000,
             'height': 1000,
-            'xaxis.title': 'Reference p-values quantiles',
-            'xaxis.type': 'log' if qq_log else 'linear',
-            'yaxis.title': 'Alternative p-values quantiles',
-            'yaxis.type': 'log' if qq_log else 'linear',
+            'xaxis': {
+                'title': 'Reference p-values quantiles',
+                'type': 'log' if qq_log else 'linear',
+                'exponentformat': 'power'
+                },
+            'yaxis': {
+                'title': 'Alternative p-values quantiles',
+                'type': 'log' if qq_log else 'linear',
+                'exponentformat': 'power'
+                }
             }
         )
         

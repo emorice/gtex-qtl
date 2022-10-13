@@ -121,7 +121,7 @@ def split_covariates(combined_covariates_file, _galp):
     The first set are covariates to use in pre-resisdualization, the second the
     set to pass to the QTL caller.
     """
-    cov_df = pd.read_table(path)
+    cov_df = pd.read_table(combined_covariates_file)
 
     is_pre = cov_df['ID'].str.startswith('InferredCov')
 

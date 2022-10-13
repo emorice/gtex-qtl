@@ -495,10 +495,54 @@ def qvalues_cmp(reference_tissue_egenes, computed_tissue_egenes):
 # 6) Pre-residualization alternatives
 # ===================================
 
+# 6.1) Simplest pre-residualization
+# ---------------------------------
+
+pre_covariates_file, post_covariate_file = (
+    residualize.split_covariates(combined_covariates_file)
+    )
+
 residualized_expression = tabix(residualize.residualize(expression_file,
-        combined_covariates_file))
+        pre_covariates_file))
 
 residualized_fastqtl = run_fastqtl(residualized_expression)
+
+# 6.2) Other models
+# ------------------
+
+model_specs = {
+        'linear': {'model': 'linear'},
+        'peer': {'model': 'peer', 'n_factors': 60}
+        }
+
+blind_expressions = {
+        shorthand: tabix(
+            residualize.residualize_blind(
+                expression_file,
+                model_spec
+                )
+            )
+        for shorthand, model_spec in model_specs.items()
+        }
+
+blind_fastqtl = {
+        shorthand: run_fastqtl(
+            blind_expression,
+            covariates_file=post_covariate_file)
+        for shorthand, blind_expression in blind_expressions.items()
+        }
+
+# 6.3) Gather runs
+# ----------------
+
+all_fastqtl = {
+        'reproduction': fastqtl,
+        'pre-residualization': residualized_fastqtl,
+        **blind_fastqtl
+        }
+
+# 6.3) Plots
+# ----------
 
 pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
         compare.all_pvals(fastqtl),
@@ -520,19 +564,10 @@ def residualized_pvals_plot(res_vs_orig_raster):
         })
     return fig
 
-blind_linear_expression = tabix(
-        residualize.residualize_blind_linear(
-            expression_file,
-            gpcs_covariates,
-            additional_covariates[0],
-            )
-        )
-
-blind_linear_fastqtl = run_fastqtl(blind_linear_expression)
 
 pbl.bind(blind_vs_res_raster=compare.datashader_scatter(
         compare.all_pvals(residualized_fastqtl),
-        compare.all_pvals(blind_linear_fastqtl),
+        compare.all_pvals(blind_fastqtl['linear']),
         log=True
         ))
 
@@ -573,7 +608,7 @@ pbl.bind(pvals_quantiles_ref=compare.quantiles(
     compare.all_pvals(residualized_fastqtl)
     ))
 pbl.bind(pvals_quantiles_alt=compare.quantiles(
-    compare.all_pvals(blind_linear_fastqtl)
+    compare.all_pvals(blind_fastqtl['linear'])
     ))
 
 pbl.bind(qq_log=True)
@@ -632,4 +667,4 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
 
 plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = pvals_qq_plot # plots
+default_target = all_fastqtl

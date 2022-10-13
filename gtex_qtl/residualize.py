@@ -92,9 +92,7 @@ def residualize(prepared_expression, combined_covariates, _galp):
     return dst_path
 
 @pbl.step(vtag='0.2: intercept')
-def residualize_blind_linear(
-        prepared_expression, gpcs, extra_covariates,
-        _galp):
+def residualize_blind(prepared_expression, model_spec, _galp):
     """
     Regress on given covariates, then linearily on other genes
     """
@@ -102,18 +100,38 @@ def residualize_blind_linear(
     # Read expression
     samples, expr_gs, expr_meta = read_expression(prepared_expression)
 
-    # Read covariates
-    cov_cs = read_covariates(samples, gpcs, extra_covariates)
-
-    # Eliminate misc covariates
-    res_gs = regress(expr_gs, cov_cs)
-
     # Perform main blind regression
-    model_spec = {'model': 'linear'}
+    #model_spec = {'model': 'linear'}
     ## small dimension first
-    res_gs = gemz.models.cv_residualize(model_spec, res_gs.T).T
+    res_gs = gemz.models.cv_residualize(model_spec, expr_gs.T).T
 
     # Write back
     dst_path = _galp.new_path() + '.bed'
     write_expression(dst_path, res_gs, samples, expr_meta)
     return dst_path
+
+@pbl.step(items=2)
+def split_covariates(combined_covariates_file, _galp):
+    """
+    Split the original combined covariate files into two sets.
+
+    Returns:
+        A tuple of paths to resp. the pre and post covariate files.
+
+    The first set are covariates to use in pre-resisdualization, the second the
+    set to pass to the QTL caller.
+    """
+    cov_df = pd.read_table(path)
+
+    is_pre = cov_df['ID'].str.startswith('InferredCov')
+
+    pre_df = cov_df[is_pre]
+    post_df = cov_df[~is_pre]
+
+    pre_path = _galp.new_path()
+    pre_df.to_csv(pre_path, sep='\t', index=False)
+
+    post_path = _galp.new_path()
+    post_df.to_csv(post_path, sep='\t', index=False)
+
+    return pre_path, post_path

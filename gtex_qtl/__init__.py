@@ -605,13 +605,13 @@ def pvals_histogram_plot(pvals_hist):
     log=True,
 
 pbl.bind(pvals_quantiles_ref=compare.quantiles(
-    compare.all_pvals(residualized_fastqtl)
+    compare.all_pvals(all_fastqtl['reproduction'])
     ))
 pbl.bind(pvals_quantiles_alt=compare.quantiles(
-    compare.all_pvals(blind_fastqtl['linear'])
+    compare.all_pvals(all_fastqtl['pre-residualization'])
     ))
 
-pbl.bind(qq_log=True)
+#pbl.bind(qq_log=True)
 
 @pbl.view
 def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
@@ -667,4 +667,4 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
 
 plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = all_fastqtl
+default_target = pvals_qq_plot # all_fastqtl

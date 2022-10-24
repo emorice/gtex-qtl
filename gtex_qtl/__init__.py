@@ -512,7 +512,8 @@ residualized_fastqtl = run_fastqtl(residualized_expression)
 
 model_specs = {
         'linear': {'model': 'linear'},
-        'peer': {'model': 'peer', 'n_factors': 60}
+        'peer': {'model': 'peer', 'n_factors': 60},
+        'cmk': {'model': 'cmk', 'n_groups': 100},
         }
 
 blind_expressions = {
@@ -605,10 +606,10 @@ def pvals_histogram_plot(pvals_hist):
     log=True,
 
 pbl.bind(pvals_quantiles_ref=compare.quantiles(
-    compare.all_pvals(all_fastqtl['reproduction'])
+    compare.all_pvals(all_fastqtl['pre-residualization'])
     ))
 pbl.bind(pvals_quantiles_alt=compare.quantiles(
-    compare.all_pvals(all_fastqtl['pre-residualization'])
+    compare.all_pvals(all_fastqtl['cmk'])
     ))
 
 #pbl.bind(qq_log=True)

@@ -612,10 +612,12 @@ pbl.bind(pvals_quantiles_alt=compare.quantiles(
     compare.all_pvals(all_fastqtl['cmk'])
     ))
 
-#pbl.bind(qq_log=True)
+pbl.bind(qq_log=True)
+pbl.bind(qq_relative=True)
 
 @pbl.view
-def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
+def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False,
+        qq_relative=False):
     """
     Uniform qq plot
     """
@@ -630,6 +632,11 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
     if not np.allclose(probas_ref, probas_alt):
         raise ValueError('Need matching probas')
 
+    neutral = np.array(quantiles_ref)
+    if qq_relative:
+        quantiles_alt /= quantiles_ref
+        neutral /= quantiles_ref
+
     return go.Figure(
         data=[
             go.Scatter(
@@ -638,27 +645,49 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False):
                 mode='lines',
                 name='quantiles',
                 hovertext=[f'{100 * p:.6g} %' for p in probas_ref],
+                yaxis='y2'
             ),
             go.Scatter(
                 x=quantiles_ref,
-                y=quantiles_ref,
+                y=neutral,
                 mode='lines',
-                name='y = x'
+                name='y = x',
+                yaxis='y2'
+                ),
+            go.Scatter(
+                x=quantiles_ref,
+                y=probas_ref,
+                mode='lines',
+                name='Reference CDF',
+                yaxis='y1'
                 )
             ],
         layout={
             'width': 1000,
-            'height': 1000,
+            'height': 1250,
             'xaxis': {
                 'title': 'Reference p-values quantiles',
                 'type': 'log' if qq_log else 'linear',
-                'exponentformat': 'power'
+                'exponentformat': 'power',
+                'linecolor': 'black',
+                'ticks': 'outside',
+                'position': 0.22,
                 },
-            'yaxis': {
+            'yaxis2': {
                 'title': 'Alternative p-values quantiles',
-                'type': 'log' if qq_log else 'linear',
-                'exponentformat': 'power'
-                }
+                'type': 'log' if qq_log and not qq_relative else 'linear',
+                'exponentformat': 'power',
+                'linecolor': 'black',
+                'ticks': 'outside',
+                'domain': [0.22, 1.0]
+                },
+            'yaxis1': {
+                'title': 'CDF',
+                'domain': [0.0, 0.16],
+                'type': 'log',
+                'ticks': 'outside',
+                'linecolor': 'black',
+                },
             }
         )
         

@@ -691,10 +691,54 @@ def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False,
             }
         )
         
+pbl.bind(egene_counts={
+    exp_name: compare.count_egenes(results)
+    for exp_name, results in all_fastqtl.items()
+    })
+
+@pbl.view
+def egenes_plot(egene_counts):
+    """
+    Bar chart of number of "eGenes"
+    """
+
+    names, counts = zip(*egene_counts.items())
+    egenes, pairs = zip(*counts)
+
+    return go.Figure(
+            data=[
+                go.Bar(
+                    x=egenes,
+                    y=names,
+                    orientation='h',
+                    name='eGenes',
+                    ),
+                go.Bar(
+                    x=pairs,
+                    y=names,
+                    orientation='h',
+                    xaxis='x2',
+                    name='gene-variant pairs',
+                    )
+            ],
+            layout={
+                'title': 'Number of "eGenes" (genes with one significant eQTL '
+                    'at FDR ≤ 0.05) and gene-variant pairs per method',
+                    'yaxis': {'title': 'Pipeline run code name'},
+                    'xaxis': {'title': 'Number of genes',
+                        'rangemode': 'tozero',
+                        'exponentformat': 'none',
+                        'domain': [0., 0.49]},
+                    'xaxis2': {'title': 'Number of significant variant-genes pairs',
+                        'rangemode': 'tozero',
+                        'exponentformat': 'none',
+                        'domain': [0.51, 1.0]},
+                }
+            )
 
 # END
 # ===
 
 plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = pvals_qq_plot # all_fastqtl
+default_target = egenes_plot # all_fastqtl

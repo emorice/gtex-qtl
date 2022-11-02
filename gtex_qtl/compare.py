@@ -17,6 +17,8 @@ import galp
 pbl = galp.StepSet()
 
 ALL_PAIRS = 'fastqtl_workflow.fastqtl_nominal.allpairs'
+EGENES = 'fastqtl_workflow.fastqtl_postprocess.genes_annotated'
+SIGNIF_PAIRS = 'fastqtl_workflow.fastqtl_postprocess.signifpairs'
 
 @pbl.step
 def all_pvals(results):
@@ -191,3 +193,21 @@ def plot_ds_scatter(ds_image_trend):
 
     return fig
 
+@pbl.step(vtag='0.2 pairs')
+def count_egenes(results):
+    """
+    Count genes with global qval <= 0.05, and significant eqtls.
+    """
+    return (
+        len(
+            pd.read_table(
+                results[EGENES]
+                )
+            .query("qval <= 0.05")
+            ),
+        len(
+            pd.read_table(
+                results[SIGNIF_PAIRS]
+                )
+            )
+        )

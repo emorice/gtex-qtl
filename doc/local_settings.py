@@ -1,0 +1,10 @@
+"""
+Various site-specific parameters
+"""
+
+GTEX_MAIN_DIR = ""
+GTEX_GENOTYPE_FILE = ""
+GTEX_EXTRA_DIR = ""
+GTEX_GENOTYPE_PCS_FILE = ""
+GTEX_SUBJECT_PHENOTYPES_FILE = ""
+GTEX_SAMPLE_ATTRIBUTES_FILE = ""

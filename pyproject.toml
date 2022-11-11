@@ -10,3 +10,11 @@ dependencies = [
     "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git"
     ]
 
+[project.optional-dependencies]
+dev = [
+  "pylint",
+  "sphinx",
+  "pydata-sphinx-theme",
+  "pynvim",
+  "jedi"
+]

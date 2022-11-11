@@ -129,9 +129,9 @@ def _dosage_from_records(records):
     n_samples = n_alleles // 2
     gt_data = gt_data.reshape((n_sites, n_samples, 2))
 
-    # Missing mask
-    missing = gt_data == np.uint8(ord('.'))
-    missing = missing[..., 0] | missing[..., 1]
+    # Non-missing mask
+    valid = gt_data != np.uint8(ord('.'))
+    valid = valid[..., 0] & valid[..., 1]
 
     # Make numerical
     gt_data -= np.uint8(ord('0'))
@@ -139,13 +139,16 @@ def _dosage_from_records(records):
     # Sum
     gt_data = np.add(gt_data[..., 0], gt_data[..., 1], dtype=np.uint8)
 
-    # At this point, missing entries will contain unspecified other values. We
-    # leave it as such since it makes easier to detect errors
+    # At this point, missing entries will contain unspecified other values.
+    # We explictly zero them out, which allows to compute sums and scalar
+    # product directly
+    gt_data *= valid
 
     # Checks
-    assert np.all(missing | (gt_data <= 2))
+    assert np.all(~valid | (gt_data <= 2))
+    assert np.all(valid | (gt_data == 0))
 
-    return missing, gt_data
+    return valid, gt_data
 
 def _read_region(file, chrom, start, end, skip=0):
     """
@@ -180,8 +183,8 @@ def _read_region(file, chrom, start, end, skip=0):
 def _parse_region(file, chrom, start, end, skip=0):
     records = list(_read_region(file, chrom, start, end, skip=skip))
     meta = [rec[:VCFFields.SAMPLES] for rec in records]
-    missing, dosage = _dosage_from_records(records)
-    return meta, missing, dosage
+    valid, dosage = _dosage_from_records(records)
+    return meta, valid, dosage
 
 def parse_region_indexed(file, index, chrom, start, end):
     """
@@ -196,7 +199,7 @@ def parse_region_indexed(file, index, chrom, start, end):
     Returns:
         Tuple:
             - list of tuples of fixed vcf fields
-            - boolean array indicating missing dosages
+            - boolean array indicating valid (non-missing) dosages
             - numeric array of dosages
     """
     chrom_found = False
@@ -224,3 +227,19 @@ def parse_region_indexed(file, index, chrom, start, end):
     with open(file, 'rb') as stream:
         stream.seek(file_pos)
         return _parse_region(stream, chrom, start, end, skip=skip)
+
+def read_header(file):
+    """
+    Extract the vcf header line from file
+
+    Returns:
+        two tuples, names of fixed fields and names of sample fields
+    """
+    with gzip.open(file, 'rt', encoding='utf8') as stream:
+        for line in stream:
+            if line.startswith('##'):
+                continue
+            if line.startswith('#'):
+                fields = line[1:].split('\t')
+                return fields[:VCFFields.SAMPLES], fields[VCFFields.SAMPLES:]
+        raise ValueError('No header line found')

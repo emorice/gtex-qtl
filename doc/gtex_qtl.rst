@@ -12,6 +12,38 @@ gtex\_qtl.compare module
    :undoc-members:
    :show-inheritance:
 
+gtex\_qtl.downloads module
+--------------------------
+
+.. automodule:: gtex_qtl.downloads
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+gtex\_qtl.fastqtl module
+------------------------
+
+.. automodule:: gtex_qtl.fastqtl
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+gtex\_qtl.peer module
+---------------------
+
+.. automodule:: gtex_qtl.peer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+gtex\_qtl.preprocess module
+---------------------------
+
+.. automodule:: gtex_qtl.preprocess
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 gtex\_qtl.qtl module
 --------------------
 

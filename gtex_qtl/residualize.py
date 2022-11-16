@@ -8,7 +8,7 @@ import pandas as pd
 import galp
 import gemz.models
 
-pbl = galp.StepSet()
+pbl = galp.Block()
 
 def read_expression(path):
     """

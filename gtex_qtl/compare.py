@@ -4,7 +4,6 @@ Utils to compare fastqtl results
 
 import io
 import base64
-import logging
 
 import numpy as np
 import pandas as pd
@@ -14,7 +13,7 @@ import plotly.graph_objects as go
 
 import galp
 
-pbl = galp.StepSet()
+pbl = galp.Block()
 
 ALL_PAIRS = 'fastqtl_workflow.fastqtl_nominal.allpairs'
 EGENES = 'fastqtl_workflow.fastqtl_postprocess.genes_annotated'
@@ -142,7 +141,10 @@ def plot_ds_scatter(ds_image_trend):
     img_dict = {}
     with io.BytesIO() as buf:
         ds_img.to_pil().save(buf, format='png')
-        img_dict['source'] = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+        img_dict['source'] = (
+                'data:image/png;base64,' +
+                base64.b64encode(buf.getvalue()).decode('ascii')
+                )
 
     # Set position
     img_dict['x'] = ds_img['x'].data.min()

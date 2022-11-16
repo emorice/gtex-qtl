@@ -1,0 +1,6 @@
+[MAIN]
+disable=redefined-outer-name
+
+[TYPECHECK]
+# List of decorators that change the signature of a decorated function.
+signature-mutators=step

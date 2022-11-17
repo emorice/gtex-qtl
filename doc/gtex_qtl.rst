@@ -36,6 +36,14 @@ gtex\_qtl.peer module
    :undoc-members:
    :show-inheritance:
 
+gtex\_qtl.plots module
+----------------------
+
+.. automodule:: gtex_qtl.plots
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 gtex\_qtl.preprocess module
 ---------------------------
 

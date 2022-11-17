@@ -78,7 +78,7 @@ pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
 pbl.bind(ref_tissue_name='Whole_Blood')
 
 @pbl.step
-def reference_tissue_expression(reference_expression, ref_tissue_name):
+def published_tissue_expression(reference_expression, ref_tissue_name):
     """
     Path to specific tissue in extracted archive
 
@@ -101,11 +101,20 @@ def expression_shape(expression_file):
         'num_samples': sum(col.startswith('GTEX-') for col in expr_df)
         }
 
-result_files = dict(
-    reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
-            'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
-            )),
-    reference_results=untar(urlretrieve(_GTEX_BASE_URL +
+pbl.bind(reference_results=untar(urlretrieve(_GTEX_BASE_URL +
         'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
-    ))
-    )
+    )))
+
+reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
+        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
+        ))
+
+@pbl.step
+def published_tissue_egenes(reference_results, ref_tissue_name):
+    """
+    Path to specific tissue results
+    """
+    return os.path.join(reference_results,
+        'GTEx_Analysis_v8_eQTL',
+        f'{ref_tissue_name}.v8.egenes.txt.gz'
+        )

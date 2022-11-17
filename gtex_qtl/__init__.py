@@ -26,7 +26,8 @@ from . import (
         preprocess,
         peer,
         fastqtl,
-        residualize, compare
+        residualize, compare,
+        plots,
         )
 
 # pylint: disable=redefined-outer-name
@@ -81,66 +82,10 @@ reference_fastqtl = run_fastqtl(
 # 5) Get published results and compare
 # ====================================
 
-# expression_shapes_cmp = {
-#        'reference': expression_shape(reference_tissue_expression),
-#        'computed': expression_shape(expression_file)
-#        }
+plots.pbl.bind(published_tissue_egenes=downloads.published_tissue_egenes())
 
-pbl = galp.Block()
-
-@pbl.step
-def reference_tissue_egenes(reference_results, ref_tissue_name):
-    """
-    Path to specific tissue results
-    """
-    return os.path.join(reference_results,
-        'GTEx_Analysis_v8_eQTL',
-        f'{ref_tissue_name}.v8.egenes.txt.gz'
-        )
-
-pbl.bind(computed_tissue_egenes=
+plots.pbl.bind(computed_tissue_egenes=
         reference_fastqtl['fastqtl_workflow.fastqtl_permutations_merge.genes']
-        )
-
-@pbl.view
-def qvalues_cmp(reference_tissue_egenes, computed_tissue_egenes):
-    """
-    Scatter plot of log-q-values
-    """
-    merged = (
-        pd.read_table(reference_tissue_egenes)
-        .merge(
-            pd.read_table(computed_tissue_egenes),
-            on='gene_id',
-            suffixes=['_reference', '_computed']
-            )
-        )
-
-    return go.Figure(
-        data=[
-            go.Scatter(
-                x=merged['qval_reference'],
-                y=merged['qval_computed'],
-                mode='markers',
-                marker={'size': 3},
-                name='recomputed'
-                ),
-            go.Scatter(
-                x=merged['qval_reference'],
-                y=merged['qval_reference'],
-                mode='lines',
-                name='y = x'
-                )
-            ],
-        layout={
-            'title': 'Comparison of published and reproduced gene statistics',
-            'xaxis': {'type': 'linear', 'title': 'Gene-level q-value (published)'},
-            'yaxis': {
-                'type': 'linear',
-                'title': 'Gene-level q-value (recomputed)'
-                },
-            'height': 1000,
-            }
         )
 
 # 6) Pre-residualization alternatives
@@ -199,6 +144,8 @@ all_fastqtl = {
 
 # 6.3) Plots
 # ----------
+
+pbl = galp.Block()
 
 pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
         compare.all_pvals(fastqtl),
@@ -393,6 +340,6 @@ def egenes_plot(egene_counts):
 # END
 # ===
 
-plots = [ residualized_pvals_plot, blind_pvals_plot ]
+#plots = [ residualized_pvals_plot, blind_pvals_plot ]
 
-default_target = reference_fastqtl # egenes_plot # all_fastqtl
+default_target = plots.qvalues_cmp # reference_fastqtl # egenes_plot # all_fastqtl

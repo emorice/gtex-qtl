@@ -25,13 +25,21 @@ def run_fastqtl(expression_files, indexed_vcf, gene_model, covariates_file=None)
         fdr=0.05, # from 2020 methods
         annotation_gtf=gene_model,
         # optional parameters
-        # NOTE: this is the in-tissue MAF filter, which is not used anymore
-        # The global maf filter is implemented by preprocessing the VCF
-        # beforehand
-        # maf_threshold=0.01, # from 2020 methods
+        # ====================
+
+        ## NOTE: this is the in-tissue MAF filter, which is not used anymore
+        ## The global maf filter is implemented by preprocessing the VCF
+        ## beforehand
+        ## maf_threshold=0.01, # from 2020 methods
+
         **( {'covariates': covariates_file}
             if covariates_file else {}),
+
+        # from 2020 methods
+        **{'fastqtl_permutations_merge.qvalue_lambda': 0.85},
+
         # runtime parameters
+        # ==================
         **{
             f'{step}.{key}': value
             for key, value in {

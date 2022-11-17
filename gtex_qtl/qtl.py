@@ -128,8 +128,7 @@ def _filter_genotype_maf(genotype, maf):
 
     filtered = _Genotype(
             genotype.samples,
-            [rec for rec, keep_site in zip(genotype.meta, keep_sites)
-                if keep_site],
+            genotype.meta[keep_sites],
             genotype.valid[keep_sites, :],
             genotype.dosages[keep_sites, :],
             )
@@ -139,7 +138,7 @@ def _filter_genotype_maf(genotype, maf):
 @dataclass(frozen=True)
 class _Genotype:
     samples: List[str]
-    meta: List[tuple]
+    meta: pd.DataFrame
     valid: np.array
     dosages: np.array
 
@@ -285,7 +284,7 @@ def _compute_pairs(genotype, expression_item):
     slope_g = cov_g / var_g
 
     return (
-        pd.DataFrame(genotype.meta)
+        genotype.meta
         .assign(**expression_item['meta'])
         .assign(slope=slope_g)
         )

@@ -7,6 +7,7 @@ import struct
 import logging
 import gzip
 import numpy as np
+import pandas as pd
 
 def _read_exact(stream, length):
     """
@@ -182,7 +183,9 @@ def _read_region(file, chrom, start, end, skip=0):
 
 def _parse_region(file, chrom, start, end, skip=0):
     records = list(_read_region(file, chrom, start, end, skip=skip))
-    meta = [rec[:VCFFields.SAMPLES] for rec in records]
+    meta = pd.DataFrame([rec[:VCFFields.SAMPLES] for rec in records],
+            columns=[field.name for field in list(VCFFields)[:VCFFields.SAMPLES]]
+            )
     valid, dosage = _dosage_from_records(records)
     return meta, valid, dosage
 

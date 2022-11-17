@@ -8,6 +8,8 @@ import pandas as pd
 import galp
 import gemz.models
 
+from . import stats
+
 pbl = galp.Block()
 
 def read_expression(path):
@@ -56,15 +58,7 @@ def regress(expr_gs, cov_cs):
     """
     Regress expression against covariates and return residuals
     """
-    # Add the intercept pseudo-covariate
-    cov_cs = np.vstack((np.ones(expr_gs.shape[-1]), cov_cs))
-
-    # Compute
-    res_gs = (expr_gs - (
-        (expr_gs @ cov_cs.T) @ np.linalg.inv(cov_cs @ cov_cs.T) @ cov_cs
-        ))
-
-    return res_gs
+    return stats.regress(expr_gs, cov_cs)
 
 @pbl.step(vtag='0.2: intercept')
 def residualize(prepared_expression, combined_covariates, _galp):

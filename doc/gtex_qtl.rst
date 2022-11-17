@@ -68,6 +68,14 @@ gtex\_qtl.residualize module
    :undoc-members:
    :show-inheritance:
 
+gtex\_qtl.stats module
+----------------------
+
+.. automodule:: gtex_qtl.stats
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 gtex\_qtl.utils module
 ----------------------
 

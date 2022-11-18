@@ -145,7 +145,8 @@ class _Genotype:
 
 DEFAULT_QTL_CONFIG = {
         'window_size': 10**6,
-        'maf': 0.01
+        'maf': 0.01,
+        'impute_genotype': False
         }
 """
 Default options for :func:`call_qtls`
@@ -177,6 +178,8 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
 
             - **window_size**: number of bases upstream and downstream of the `start`
             - **maf**: minimum maf filter to apply
+            - **impute_genotype**: whether to replace missing genotype dosages
+              by the sample mean.
 
             Defaults taken from :data:`DEFAULT_QTL_CONFIG`
 
@@ -209,6 +212,10 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     # Mind the order !
     genotype = _filter_genotype_maf(genotype, qtl_config['maf'])
     genotype = _filter_genotype_samples(genotype, expression['samples'])
+
+    if qtl_config['impute_genotype']:
+        logger.info('Imputing missing genotypes')
+        genotype = _impute_genotypes(genotype)
 
     covariates = _pack_covariates(covariates_df, expression['samples'])
     genotype = _regress_genotype(genotype, covariates)
@@ -308,3 +315,14 @@ def _compute_pairs(genotype, expression_item, dofs):
             slope_normal_pval=slope_normal_pval_g
             )
         )
+
+def _impute_genotypes(genotype):
+    """
+    Replace missing genotype dosages by the sample mean
+    """
+    mean_g = np.sum(genotype.dosages, -1) / np.sum(genotype.valid, -1)
+
+    return dataclasses.replace(genotype,
+            dosages = np.where(genotype.valid, genotype.dosages, mean_g[:, None]),
+            valid = genotype.valid |~ genotype.valid
+            )

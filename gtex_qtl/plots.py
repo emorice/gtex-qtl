@@ -10,14 +10,14 @@ pbl = galp.Block()
 
 
 pbl.bind(cmp_variable=
-        #'qval'
+        'qval'
         #'num_var'
         #'maf'
         #'pval_nominal'
         #'beta_shape1'
         #'beta_shape2'
         #'true_df'
-        'pval_beta'
+        #'pval_beta'
         )
 
 @pbl.view

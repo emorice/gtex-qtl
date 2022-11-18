@@ -9,6 +9,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from scipy.special import erfc
 
 from . import vcf
 from . import stats
@@ -214,7 +215,8 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     expression = _regress_expression(expression, covariates)
 
     return pd.concat([
-        _compute_pairs(genotype, expression_item)
+        # Dofs is number of covariates plus 1 since there's an intercept
+        _compute_pairs(genotype, expression_item, len(covariates['meta_c']) + 1)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ])
 
@@ -275,16 +277,34 @@ def _iter_expression(expression, gene_window_indexes):
             )
         )
 
-def _compute_pairs(genotype, expression_item):
+def _compute_pairs(genotype, expression_item, dofs):
     # FIXME: filter by position
-    n_valid_g = np.sum(genotype.valid, -1)
-    cov_g = genotype.dosages @ expression_item['values_s'] / n_valid_g
-    var_g = np.sum(genotype.dosages**2, -1) / n_valid_g
 
-    slope_g = cov_g / var_g
+    gt_gs = genotype.dosages
+    valid_gs = genotype.valid
+    n_valid_g = np.sum(valid_gs, -1)
+
+    gx_s = expression_item['values_s']
+
+    gtgx_g = gt_gs @ gx_s
+    gt2_g = np.sum(gt_gs**2, -1)
+
+    slope_g = gtgx_g / gt2_g
+
+    res2_g = np.sum((gx_s - slope_g[:, None] * gt_gs)**2 * valid_gs, -1)
+
+    slope_std_g = np.sqrt(res2_g  / (gt2_g * (n_valid_g - dofs - 1)))
+
+    slope_t_g = slope_g / slope_std_g
+
+    slope_normal_pval_g = erfc(np.abs(slope_t_g) / np.sqrt(2))
 
     return (
         genotype.meta
         .assign(**expression_item['meta'])
-        .assign(slope=slope_g)
+        .assign(
+            slope=slope_g,
+            slope_std=slope_std_g,
+            slope_normal_pval=slope_normal_pval_g
+            )
         )

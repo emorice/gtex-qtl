@@ -9,7 +9,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-from scipy.special import erfc
+from scipy.special import betainc
 
 from . import vcf
 from . import stats
@@ -146,7 +146,7 @@ class _Genotype:
 DEFAULT_QTL_CONFIG = {
         'window_size': 10**6,
         'maf': 0.01,
-        'impute_genotype': False
+        'impute_genotype': True
         }
 """
 Default options for :func:`call_qtls`
@@ -300,19 +300,26 @@ def _compute_pairs(genotype, expression_item, dofs):
 
     res2_g = np.sum((gx_s - slope_g[:, None] * gt_gs)**2 * valid_gs, -1)
 
-    slope_std_g = np.sqrt(res2_g  / (gt2_g * (n_valid_g - dofs - 1)))
+    # Residual degrees of freedom: number of valid observations, minus the
+    # parameters eliminated by pre-regression -- including the mean --, minus
+    # the genotype weight parameter itself
+    rdofs_g = n_valid_g - dofs - 1
 
-    slope_t_g = slope_g / slope_std_g
 
-    slope_normal_pval_g = erfc(np.abs(slope_t_g) / np.sqrt(2))
+    slope_var_g = res2_g  / (gt2_g * rdofs_g)
+
+    # T^2 statistic
+    slope_t2_g = slope_g**2 / slope_var_g
+
+    slope_pval_g = betainc(.5 * rdofs_g, .5, rdofs_g / (rdofs_g + slope_t2_g))
 
     return (
         genotype.meta
         .assign(**expression_item['meta'])
         .assign(
+            pval_nominal=slope_pval_g,
             slope=slope_g,
-            slope_std=slope_std_g,
-            slope_normal_pval=slope_normal_pval_g
+            slope_se=np.sqrt(slope_var_g),
             )
         )
 

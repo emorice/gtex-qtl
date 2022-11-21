@@ -148,7 +148,8 @@ class _Genotype:
 DEFAULT_QTL_CONFIG = {
         'window_size': 10**6,
         'maf': 0.01,
-        'impute_genotype': True
+        'impute_genotype': True,
+        'num_permutations': 10**4,
         }
 """
 Default options for :func:`call_qtls`
@@ -192,7 +193,7 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
 
     expression = _pack_expression(expression_df)
 
-    chrom, genotype_window = _make_genotype_window(expression['meta_g'],
+    chrom, genotype_window = _make_genotype_window(expression['meta_x'],
             gene_window_indexes, qtl_config['window_size'])
 
     _, genotype_samples = vcf.read_header(vcf_path)
@@ -221,12 +222,9 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
 
     covariates = _pack_covariates(covariates_df, expression['samples'])
     genotype = _regress_genotype(genotype, covariates)
-    expression = _regress_expression(expression, covariates)
 
     pairs, summaries = zip(*(
-        # Dofs is number of covariates plus 1 since there's an intercept
-        _call_gene(genotype, expression_item, len(covariates['meta_c']) + 1,
-            qtl_config)
+        _call_gene(genotype, expression_item, covariates, qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ))
     return pd.concat(pairs), pd.DataFrame(summaries)
@@ -251,8 +249,8 @@ def _pack_expression(expression):
     data_columns = expression_df.columns[n_meta:]
 
     return dict(
-        meta_g = expression_df[meta_columns],
-        values_gs = np.array(expression_df[data_columns]),
+        meta_x = expression_df[meta_columns],
+        values_xs = np.array(expression_df[data_columns]),
         samples = data_columns
         )
 
@@ -267,8 +265,8 @@ def _regress_genotype(genotype, covariates):
 
 def _regress_expression(expression, covariates):
     return dict(expression,
-            values_gs=stats.regress(
-                expression['values_gs'],
+            values_xs=stats.regress(
+                expression['values_xs'],
                 covariates['values_cs']
                 )
             )
@@ -283,48 +281,44 @@ def _iter_expression(expression, gene_window_indexes):
         }
         for (_, meta), values in
         zip(
-            expression['meta_g'].iloc[start:stop].iterrows(),
-            expression['values_gs'][start:stop]
+            expression['meta_x'].iloc[start:stop].iterrows(),
+            expression['values_xs'][start:stop]
             )
         )
 
-def _call_pairs(genotype, expression_item, dofs):
+def _call_pairs(genotype, expression, dofs):
     gt_gs = genotype.dosages
     valid_gs = genotype.valid
     n_valid_g = np.sum(valid_gs, -1)
 
-    gx_s = expression_item['values_s']
+    gx_xs = expression['values_xs']
 
-    gtgx_g = gt_gs @ gx_s
+    gtgx_xg = gx_xs @ gt_gs.T
     gt2_g = np.sum(gt_gs**2, -1)
 
-    slope_g = gtgx_g / gt2_g
+    slope_xg = gtgx_xg / gt2_g
 
-    res2_g = np.sum((gx_s - slope_g[:, None] * gt_gs)**2 * valid_gs, -1)
+    res2_xg = (
+            (gx_xs**2) @ valid_gs.T
+            - 2. * gtgx_xg * slope_xg
+            + slope_xg**2 * gt2_g
+            )
 
     # Residual degrees of freedom: number of valid observations, minus the
     # parameters eliminated by pre-regression -- including the mean --, minus
     # the genotype weight parameter itself
     rdofs_g = n_valid_g - dofs - 1
 
-    slope_var_g = res2_g  / (gt2_g * rdofs_g)
+    slope_var_xg = res2_xg  / (gt2_g * rdofs_g)
 
     # T^2 statistic
-    slope_t2_g = slope_g**2 / slope_var_g
+    slope_t2_xg = slope_xg**2 / slope_var_xg
 
-    slope_pval_g = betainc(.5 * rdofs_g, .5, rdofs_g / (rdofs_g + slope_t2_g))
+    slope_pval_xg = betainc(.5 * rdofs_g, .5, rdofs_g / (rdofs_g + slope_t2_xg))
 
-    return (
-        genotype.meta
-        .assign(**expression_item['meta'])
-        .assign(
-            pval_nominal=slope_pval_g,
-            slope=slope_g,
-            slope_se=np.sqrt(slope_var_g),
-            )
-        )
+    return slope_pval_xg, slope_xg, np.sqrt(slope_var_xg)
 
-def _call_gene(genotype, expression_item, dofs, qtl_config):
+def _call_gene(genotype, expression_item, covariates, qtl_config):
     """
     Compute all pairwise associations, plus the gene-level statistics for one
     gene
@@ -333,6 +327,7 @@ def _call_gene(genotype, expression_item, dofs, qtl_config):
         genotype: all sites to consider, needs not be filtered by position yet
     """
 
+    # Filter genotype by distance
     rel_pos = genotype.meta['POS'] - expression_item['meta']['start']
 
     genotype = _filter_genotype_sites(genotype,
@@ -343,15 +338,60 @@ def _call_gene(genotype, expression_item, dofs, qtl_config):
             meta=genotype.meta.assign(tss_distance=rel_pos)
             )
 
-    pairs = _call_pairs(genotype, expression_item, dofs)
+    # Generate decoy genes
+    ## Seed rng with pos, so that permutation is different for each gene but
+    ## replicable
+    rng = np.random.default_rng(expression_item['meta']['start'])
 
+    values_s = expression_item['values_s']
+
+    n_samples = len(values_s)
+    n_perms = qtl_config['num_permutations']
+    # Permute by drawing random reals and sorting them to get random orders
+    perm_values_xs = values_s[
+            np.argsort(
+                rng.random((n_perms, n_samples)),
+                -1)
+            ]
+
+    # Stack true expression first and decoys in the other rows
+    expression = dict(expression_item,
+            values_xs=np.vstack((values_s[None, :], perm_values_xs))
+            )
+
+    # Residualize true and decoy genes
+    expression = _regress_expression(expression, covariates)
+    ## Dofs is number of covariates plus 1 since there's an intercept
+    dofs = len(covariates['meta_c']) + 1,
+
+    # Compute association for all
+    slope_pval_xg, slope_xg, slope_std_xg = _call_pairs(genotype, expression, dofs)
+
+    # Gather associations for the true expression
+    pairs = (
+        genotype.meta
+        .assign(**expression_item['meta'])
+        .assign(
+            pval_nominal=slope_pval_xg[0],
+            slope=slope_xg[0],
+            slope_se=slope_std_xg[0],
+            )
+        )
+
+
+    best_nominals_null_x = np.min(slope_pval_xg, -1)[1:]
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
+    pval_perm = (
+            (np.sum(best_nominals_null_x <= best_pair.pval_nominal) + 1)
+            / n_perms
+            )
 
     summary = dict(expression_item['meta'],
             num_var=len(genotype.meta),
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
-                }
+                },
+            pval_perm=pval_perm
             )
 
     return pairs, summary

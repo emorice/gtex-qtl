@@ -127,14 +127,16 @@ def _filter_genotype_maf(genotype, maf):
             100 * keep_sites.sum() / len(keep_sites)
             )
 
-    filtered = _Genotype(
+    return _filter_genotype_sites(genotype, keep_sites)
+
+
+def _filter_genotype_sites(genotype, keep_sites):
+    return _Genotype(
             genotype.samples,
             genotype.meta[keep_sites],
             genotype.valid[keep_sites, :],
             genotype.dosages[keep_sites, :],
             )
-
-    return filtered
 
 @dataclass(frozen=True)
 class _Genotype:
@@ -221,11 +223,13 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     genotype = _regress_genotype(genotype, covariates)
     expression = _regress_expression(expression, covariates)
 
-    return pd.concat([
+    pairs, summaries = zip(*(
         # Dofs is number of covariates plus 1 since there's an intercept
-        _compute_pairs(genotype, expression_item, len(covariates['meta_c']) + 1)
+        _call_gene(genotype, expression_item, len(covariates['meta_c']) + 1,
+            qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
-        ])
+        ))
+    return pd.concat(pairs), pd.DataFrame(summaries)
 
 def _pack_covariates(covariates_df, expression_samples):
     """
@@ -284,9 +288,7 @@ def _iter_expression(expression, gene_window_indexes):
             )
         )
 
-def _compute_pairs(genotype, expression_item, dofs):
-    # FIXME: filter by position
-
+def _call_pairs(genotype, expression_item, dofs):
     gt_gs = genotype.dosages
     valid_gs = genotype.valid
     n_valid_g = np.sum(valid_gs, -1)
@@ -305,7 +307,6 @@ def _compute_pairs(genotype, expression_item, dofs):
     # the genotype weight parameter itself
     rdofs_g = n_valid_g - dofs - 1
 
-
     slope_var_g = res2_g  / (gt2_g * rdofs_g)
 
     # T^2 statistic
@@ -322,6 +323,38 @@ def _compute_pairs(genotype, expression_item, dofs):
             slope_se=np.sqrt(slope_var_g),
             )
         )
+
+def _call_gene(genotype, expression_item, dofs, qtl_config):
+    """
+    Compute all pairwise associations, plus the gene-level statistics for one
+    gene
+
+    Args:
+        genotype: all sites to consider, needs not be filtered by position yet
+    """
+
+    rel_pos = genotype.meta['POS'] - expression_item['meta']['start']
+
+    genotype = _filter_genotype_sites(genotype,
+            np.abs(rel_pos) <= qtl_config['window_size']
+            )
+    genotype = dataclasses.replace(genotype,
+            # Not actually a distance
+            meta=genotype.meta.assign(tss_distance=rel_pos)
+            )
+
+    pairs = _call_pairs(genotype, expression_item, dofs)
+
+    best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
+
+    summary = dict(expression_item['meta'],
+            num_var=len(genotype.meta),
+            **{k: best_pair[k]
+                for k in ('pval_nominal', 'slope', 'slope_se')
+                }
+            )
+
+    return pairs, summary
 
 def _impute_genotypes(genotype):
     """

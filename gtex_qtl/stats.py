@@ -2,7 +2,12 @@
 Generic statistical routines used throughout the pipelines
 """
 
+import logging
+
 import numpy as np
+from scipy.special import digamma
+
+logger = logging.getLogger(__name__)
 
 def regress(data_bs, covariates_cs):
     """
@@ -50,3 +55,45 @@ def regress_missing(data_bs, valid_bs, covariates_cs):
     weights_cb = np.linalg.inv(cov_cc) @ cov_cb
 
     return data_bs - weights_cb.T @ covariates_cs
+
+def fit_beta(mlp_mean, mlpc_mean, tol=1e-6, n_iter=1000):
+    """
+    Fit a beta distribution from sufficient statistics by maximum likelihood
+
+    Uses very simple order-1 multiplicative updates, works usually well but not
+    particularly fast.
+
+    Args:
+        mlp_mean: observed average negative log of values
+            (:math:`\\frac 1 N \\sum{-\\ln(x_i)}`)
+        mlpc_mean: observed average negative log of complementary values (one
+            minus values, :math:`\\frac 1 N \\sum{-\\ln(1 - x_i)}`)
+    """
+    shape1, shape2 = 1., 1.
+
+    i = 0
+    mlp, mlpc = 1., 1.
+
+    while (
+        np.abs(mlp - mlp_mean) > tol * mlp_mean
+        and np.abs(mlpc - mlpc_mean) > tol * mlpc_mean
+        and i < n_iter
+        ):
+        shape1 *= mlp / mlp_mean
+        shape2 *= mlpc / mlpc_mean
+        dig1, dig2, dig12 = (
+                digamma(shape1), digamma(shape2),
+                digamma(shape1 + shape2)
+                )
+        mlp, mlpc = dig12 - dig1, dig12 - dig2
+        i += 1
+
+    if i >= n_iter:
+        logger.warning(
+            'Beta distribution fit did not converge in %d iterations', n_iter
+            )
+    else:
+        logger.info(
+            'Beta distribution fit converged in %d iterations', i
+            )
+    return shape1, shape2

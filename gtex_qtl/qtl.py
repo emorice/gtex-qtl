@@ -223,6 +223,7 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     covariates = _pack_covariates(covariates_df, expression['samples'])
     genotype = _regress_genotype(genotype, covariates)
 
+    logger.info('Computing associations')
     pairs, summaries = zip(*(
         _call_gene(genotype, expression_item, covariates, qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
@@ -362,7 +363,7 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     # Residualize true and decoy genes
     expression = _regress_expression(expression, covariates)
     ## Dofs is number of covariates plus 1 since there's an intercept
-    dofs = len(covariates['meta_c']) + 1,
+    dofs = len(covariates['meta_c']) + 1
 
     # Compute association for all
     slope_pval_xg, slope_xg, slope_std_xg = _call_pairs(genotype, expression, dofs)
@@ -383,15 +384,22 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
     pval_perm = (
             (np.sum(best_nominals_null_x <= best_pair.pval_nominal) + 1)
-            / n_perms
+            / (n_perms + 1)
             )
+    beta_shapes = stats.fit_beta(
+        mlp_mean=-np.mean(np.log(best_nominals_null_x)),
+        mlpc_mean=-np.mean(np.log(1. - best_nominals_null_x))
+        )
 
     summary = dict(expression_item['meta'],
             num_var=len(genotype.meta),
+            beta_shape1=beta_shapes[0],
+            beta_shape2=beta_shapes[1],
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },
-            pval_perm=pval_perm
+            pval_perm=pval_perm,
+            pval_beta=betainc(*beta_shapes, best_pair.pval_nominal)
             )
 
     return pairs, summary

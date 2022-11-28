@@ -221,6 +221,7 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
         genotype = _impute_genotypes(genotype)
 
     covariates = _pack_covariates(covariates_df, expression['samples'])
+    logger.info('Loaded %d covariates', len(covariates['meta_c']))
     genotype = _regress_genotype(genotype, covariates)
 
     logger.info('Computing associations')
@@ -287,10 +288,9 @@ def _iter_expression(expression, gene_window_indexes):
             )
         )
 
-def _call_pairs(genotype, expression, dofs):
+def _call_pairs(genotype, expression):
     gt_gs = genotype.dosages
     valid_gs = genotype.valid
-    n_valid_g = np.sum(valid_gs, -1)
 
     gx_xs = expression['values_xs']
 
@@ -305,19 +305,27 @@ def _call_pairs(genotype, expression, dofs):
             + slope_xg**2 * gt2_g
             )
 
+    return slope_xg, res2_xg / gt2_g
+
+def _dev_and_pval(slope_xg, res2_gt2_xg, n_valid_g, dofs):
+    """
+    Estimate standard deviation and p-value for a given number of
+    missing degrees of freedom
+    """
+
     # Residual degrees of freedom: number of valid observations, minus the
     # parameters eliminated by pre-regression -- including the mean --, minus
     # the genotype weight parameter itself
     rdofs_g = n_valid_g - dofs - 1
 
-    slope_var_xg = res2_xg  / (gt2_g * rdofs_g)
+    slope_var_xg = res2_gt2_xg  / rdofs_g
 
     # T^2 statistic
     slope_t2_xg = slope_xg**2 / slope_var_xg
 
     slope_pval_xg = betainc(.5 * rdofs_g, .5, rdofs_g / (rdofs_g + slope_t2_xg))
 
-    return slope_pval_xg, slope_xg, np.sqrt(slope_var_xg)
+    return slope_pval_xg, np.sqrt(slope_var_xg)
 
 def _call_gene(genotype, expression_item, covariates, qtl_config):
     """
@@ -366,7 +374,18 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     dofs = len(covariates['meta_c']) + 1
 
     # Compute association for all
-    slope_pval_xg, slope_xg, slope_std_xg = _call_pairs(genotype, expression, dofs)
+    slope_xg, res2_gt2_xg = _call_pairs(genotype, expression)
+
+    # Estimate dofs from decoy genes
+    _scaled_t_xg = slope_xg / np.sqrt(res2_gt2_xg)
+    _scaled_t_nulls = (_scaled_t_xg[1:]).flatten()
+    est_dofs = stats.fit_scaled_t(_scaled_t_nulls)
+
+    # Compute deviation and tests
+    slope_pval_xg, slope_std_xg = _dev_and_pval(
+            slope_xg, res2_gt2_xg, np.sum(genotype.valid, -1), dofs
+            )
+
 
     # Gather associations for the true expression
     pairs = (
@@ -378,7 +397,6 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             slope_se=slope_std_xg[0],
             )
         )
-
 
     best_nominals_null_x = np.min(slope_pval_xg, -1)[1:]
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
@@ -395,6 +413,7 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             num_var=len(genotype.meta),
             beta_shape1=beta_shapes[0],
             beta_shape2=beta_shapes[1],
+            true_df=est_dofs,
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },

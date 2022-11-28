@@ -5,7 +5,8 @@ Generic statistical routines used throughout the pipelines
 import logging
 
 import numpy as np
-from scipy.special import digamma
+import scipy.optimize
+from scipy.special import digamma, betaln
 
 logger = logging.getLogger(__name__)
 
@@ -97,3 +98,27 @@ def fit_beta(mlp_mean, mlpc_mean, tol=1e-6, n_iter=1000):
             'Beta distribution fit converged in %d iterations', i
             )
     return shape1, shape2
+
+def _log_scaled_t(values, dofs):
+    return (
+        - betaln(.5, .5 * dofs)
+        - .5 * (dofs + 1) * np.log(1 + values**2)
+        )
+
+def fit_scaled_t(values):
+    """
+    Fit a scaled t distribution
+    """
+    opt = scipy.optimize.minimize_scalar(
+            lambda param: - _log_scaled_t(values, np.exp(param)).sum()
+            )
+    if not opt.success:
+        logger.warning(
+                'Scaled-T distribution fit failed after %d iterations: %s',
+                opt.nit, opt.message
+            )
+    else:
+        logger.info(
+                'Scaled-T distribution fit succeeded in %d iterations', opt.nit
+            )
+    return np.exp(opt.x)

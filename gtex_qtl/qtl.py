@@ -377,9 +377,16 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     slope_xg, res2_gt2_xg = _call_pairs(genotype, expression)
 
     # Estimate dofs from decoy genes
-    _scaled_t_xg = slope_xg / np.sqrt(res2_gt2_xg)
-    _scaled_t_nulls = (_scaled_t_xg[1:]).flatten()
-    est_dofs = stats.fit_scaled_t(_scaled_t_nulls)
+    ## Scaled t2 statistic
+    _scaled_t2_xg = slope_xg**2 / res2_gt2_xg
+    ## Keep best of each decoy
+    _best_null_t2s = np.max(_scaled_t2_xg[1:], -1)
+
+    ## Estimate both meaningful parameters jointly
+    est_dofs, est_reps = stats.fit_max_scaled_t(_best_null_t2s)
+
+    ## Estimate parameters in turn with fqtl procedure
+    fq_est_dofs, fq_beta_shapes = stats.fqtl_fit_max_scaled_t(_best_null_t2s)
 
     # Compute deviation and tests
     slope_pval_xg, slope_std_xg = _dev_and_pval(
@@ -404,21 +411,22 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             (np.sum(best_nominals_null_x <= best_pair.pval_nominal) + 1)
             / (n_perms + 1)
             )
-    beta_shapes = stats.fit_beta(
-        mlp_mean=-np.mean(np.log(best_nominals_null_x)),
-        mlpc_mean=-np.mean(np.log(1. - best_nominals_null_x))
-        )
 
     summary = dict(expression_item['meta'],
             num_var=len(genotype.meta),
-            beta_shape1=beta_shapes[0],
-            beta_shape2=beta_shapes[1],
-            true_df=est_dofs,
+            # FQTL reproduction
+            beta_shape1=fq_beta_shapes[0],
+            beta_shape2=fq_beta_shapes[1],
+            true_df=fq_est_dofs,
+            # Joint MLE estimation
+            beta_shape2_jmle=est_reps,
+            true_df_jmle=est_dofs,
+            #
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },
             pval_perm=pval_perm,
-            pval_beta=betainc(*beta_shapes, best_pair.pval_nominal)
+            #pval_beta=betainc(*beta_shapes, best_pair.pval_nominal)
             )
 
     return pairs, summary

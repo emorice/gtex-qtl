@@ -129,7 +129,6 @@ def _filter_genotype_maf(genotype, maf):
 
     return _filter_genotype_sites(genotype, keep_sites)
 
-
 def _filter_genotype_sites(genotype, keep_sites):
     return _Genotype(
             genotype.samples,
@@ -305,9 +304,12 @@ def _call_pairs(genotype, expression):
             + slope_xg**2 * gt2_g
             )
 
-    return slope_xg, res2_xg / gt2_g
+    # Scaled t^2 statistic (meaning up to the dofs factor)
+    st2_xg = slope_xg**2 * gt2_g / res2_xg
 
-def _dev_and_pval(slope_xg, res2_gt2_xg, n_valid_g, dofs):
+    return slope_xg, st2_xg
+
+def _dev_and_pval(slope_xg, st2_xg, n_valid_g, dofs):
     """
     Estimate standard deviation and p-value for a given number of
     missing degrees of freedom
@@ -318,44 +320,30 @@ def _dev_and_pval(slope_xg, res2_gt2_xg, n_valid_g, dofs):
     # the genotype weight parameter itself
     rdofs_g = n_valid_g - dofs - 1
 
-    slope_var_xg = res2_gt2_xg  / rdofs_g
+    slope_var_xg = slope_xg**2 / (rdofs_g * st2_xg)
 
-    # T^2 statistic
-    slope_t2_xg = slope_xg**2 / slope_var_xg
-
-    slope_pval_xg = betainc(.5 * rdofs_g, .5, rdofs_g / (rdofs_g + slope_t2_xg))
+    slope_pval_xg = betainc(.5 * rdofs_g, .5, 1. / (1. + st2_xg))
 
     return slope_pval_xg, np.sqrt(slope_var_xg)
 
-def _call_gene(genotype, expression_item, covariates, qtl_config):
+def _add_null_genes(expression_item, qtl_config):
     """
-    Compute all pairwise associations, plus the gene-level statistics for one
-    gene
+    Generate expression with no association to genotype
 
-    Args:
-        genotype: all sites to consider, needs not be filtered by position yet
+    Return an expression dictionnary looking like the expression of several
+    genes, with the first being the target gene and all the following genes
+    being the null set of genes (or decoys).
     """
 
-    # Filter genotype by distance
-    rel_pos = genotype.meta['POS'] - expression_item['meta']['start']
-
-    genotype = _filter_genotype_sites(genotype,
-            np.abs(rel_pos) <= qtl_config['window_size']
-            )
-    genotype = dataclasses.replace(genotype,
-            # Not actually a distance
-            meta=genotype.meta.assign(tss_distance=rel_pos)
-            )
-
-    # Generate decoy genes
     ## Seed rng with pos, so that permutation is different for each gene but
     ## replicable
     rng = np.random.default_rng(expression_item['meta']['start'])
 
+    n_perms = qtl_config['num_permutations']
+
     values_s = expression_item['values_s']
 
     n_samples = len(values_s)
-    n_perms = qtl_config['num_permutations']
     # Permute by drawing random reals and sorting them to get random orders
     perm_values_xs = values_s[
             np.argsort(
@@ -368,56 +356,80 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             values_xs=np.vstack((values_s[None, :], perm_values_xs))
             )
 
+    return expression
+
+def _filter_genotype_proximity(genotype, expression_item, qtl_config):
+    """
+    Filter genotype sites within requested window of gene feature start
+    """
+    rel_pos = genotype.meta['POS'] - expression_item['meta']['start']
+
+    genotype = _filter_genotype_sites(genotype,
+            np.abs(rel_pos) <= qtl_config['window_size']
+            )
+    return  dataclasses.replace(genotype,
+            # Not actually a distance
+            meta=genotype.meta.assign(tss_distance=rel_pos)
+            )
+
+def _call_gene(genotype, expression_item, covariates, qtl_config):
+    """
+    Compute all pairwise associations, plus the gene-level statistics for one
+    gene
+
+    Args:
+        genotype: all sites to consider, needs not be filtered by position yet
+    """
+
+    # Filter genotype by distance
+    genotype = _filter_genotype_proximity(genotype, expression_item, qtl_config)
+
+    # Generate decoy genes
+    expression = _add_null_genes(expression_item, qtl_config)
+
     # Residualize true and decoy genes
     expression = _regress_expression(expression, covariates)
+
+    # Compute association for all
+    slope_xg, scaled_t2_xg = _call_pairs(genotype, expression)
+
+    # Estimate dofs from decoy genes
+    ## Keep best of each decoy
+    _best_null_st2s = np.max(scaled_t2_xg[1:], -1)
+
+    ## Estimate both meaningful parameters jointly
+    est_dofs, est_reps = stats.fit_max_scaled_t(_best_null_st2s)
+
+    ## Estimate parameters in turn with fqtl procedure
+    fqtl_params = stats.fqtl_fit_max_scaled_t(_best_null_st2s)
+
+    # Compute deviation and tests
     ## Dofs is number of covariates plus 1 since there's an intercept
     dofs = len(covariates['meta_c']) + 1
 
-    # Compute association for all
-    slope_xg, res2_gt2_xg = _call_pairs(genotype, expression)
-
-    # Estimate dofs from decoy genes
-    ## Scaled t2 statistic
-    _scaled_t2_xg = slope_xg**2 / res2_gt2_xg
-    ## Keep best of each decoy
-    _best_null_t2s = np.max(_scaled_t2_xg[1:], -1)
-
-    ## Estimate both meaningful parameters jointly
-    est_dofs, est_reps = stats.fit_max_scaled_t(_best_null_t2s)
-
-    ## Estimate parameters in turn with fqtl procedure
-    fq_est_dofs, fq_beta_shapes = stats.fqtl_fit_max_scaled_t(_best_null_t2s)
-
-    # Compute deviation and tests
-    slope_pval_xg, slope_std_xg = _dev_and_pval(
-            slope_xg, res2_gt2_xg, np.sum(genotype.valid, -1), dofs
+    slope_pval_g, slope_std_g = _dev_and_pval(
+            slope_xg[0], scaled_t2_xg[0], np.sum(genotype.valid, -1), dofs
             )
-
 
     # Gather associations for the true expression
     pairs = (
         genotype.meta
         .assign(**expression_item['meta'])
         .assign(
-            pval_nominal=slope_pval_xg[0],
+            pval_nominal=slope_pval_g,
             slope=slope_xg[0],
-            slope_se=slope_std_xg[0],
+            slope_se=slope_std_g,
             )
         )
 
-    best_nominals_null_x = np.min(slope_pval_xg, -1)[1:]
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
-    pval_perm = (
-            (np.sum(best_nominals_null_x <= best_pair.pval_nominal) + 1)
-            / (n_perms + 1)
-            )
+    best_st2 = np.max(scaled_t2_xg[0])
 
     summary = dict(expression_item['meta'],
             num_var=len(genotype.meta),
             # FQTL reproduction
-            beta_shape1=fq_beta_shapes[0],
-            beta_shape2=fq_beta_shapes[1],
-            true_df=fq_est_dofs,
+            **fqtl_params,
+            **stats.fqtl_pval_max_scaled_t(best_st2, fqtl_params),
             # Joint MLE estimation
             beta_shape2_jmle=est_reps,
             true_df_jmle=est_dofs,
@@ -425,11 +437,22 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },
-            pval_perm=pval_perm,
-            #pval_beta=betainc(*beta_shapes, best_pair.pval_nominal)
+            pval_perm=_empirical_pval(best_st2, _best_null_st2s)
             )
 
     return pairs, summary
+
+def _empirical_pval(stat, null_stats):
+    """
+    Empirical p-value given samples of the test statistic
+
+    P-value is computed for the upper tail of the statistic.
+    """
+
+    return (
+            (np.sum(null_stats >= stat) + 1)
+            / (len(null_stats) + 1)
+            )
 
 def _impute_genotypes(genotype):
     """

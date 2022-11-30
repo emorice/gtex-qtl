@@ -237,4 +237,36 @@ def fqtl_fit_max_scaled_t(best_scaled_t2s):
             -np.mean(np.log(1. - pvalues))
             )
 
-    return est_dofs, beta_shapes
+    return {
+        'true_df': est_dofs,
+        'beta_shape1': beta_shapes[0],
+        'beta_shape2': beta_shapes[1],
+        }
+
+def fqtl_pval_max_scaled_t(scaled_t2, params):
+    """
+    Compute p-values from a fitted max-scaled-t model obtained with the FastQTL
+    procedure
+
+    Args:
+        scaled_t2: Scaled-T statistic of the association, squared
+        params: dictionnary of parameters fitted on samples from the null
+            distribution, as found by :func:`fqtl_pval_max_scaled_t`
+
+    Returns:
+        dictionnary with the final p-value as `pval_beta` and the `pval_true_df`
+            of the association under the re-estimated DoFs (normally not of any
+            direct interest)
+    """
+
+    intermediate_pval = st_sf(scaled_t2, params['true_df'])
+
+    pval = scipy.special.betainc(
+            params['beta_shape1'], params['beta_shape2'],
+            intermediate_pval
+            )
+
+    return {
+        'pval_true_df': intermediate_pval,
+        'pval_beta': pval
+        }

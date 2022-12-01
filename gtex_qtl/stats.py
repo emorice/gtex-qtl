@@ -149,7 +149,6 @@ def st_sf(st2, dofs):
     """
     return scipy.special.betainc(.5 * dofs, .5, 1. / (1. + st2))
 
-
 def mle_log_rep_max(sfs):
     """
     Given observations of the maxima of iid, identically-sized random vectors,
@@ -190,18 +189,40 @@ def fit_max_scaled_t(best_scaled_t2s):
         best_scaled_t2s: observed maxima of the squared scaled ts.
 
     Returns:
-        tuple with the mle of the number of degrees of freedom, and the number
-        of observations maxed over.
+        dict with `dofs` the mle of the number of degrees of freedom, and `reps`
+        the mle of the number of observations maxed over.
     """
     opt = scipy.optimize.minimize_scalar(
             lambda dofs: -_maxed_scaled_t_ll(best_scaled_t2s, dofs),
             (0.1, 0.2))
     _log_convergence(opt, 'Max-Scaled-T distribution fit')
     mle_dofs = opt.x
-    return (
-            mle_dofs,
-            np.exp(mle_log_rep_max(st_sf(best_scaled_t2s, mle_dofs)))
-            )
+    return {
+        'dofs': mle_dofs,
+        'reps': np.exp(mle_log_rep_max(st_sf(best_scaled_t2s, mle_dofs)))
+        }
+
+def pval_max_scaled_t(scaled_t2, params):
+    """
+    Compute p-values from a fitted max-scaled-t model obtained by joint MLE
+    estimation
+
+    Args:
+        scaled_t2: Scaled-T statistic of the association, squared
+        params: dictionnary of parameters fitted on samples from the null
+            distribution, as found by :func:`pval_max_scaled_t`
+
+    Returns:
+        dictionnary with the final p-value as `pval_beta` and the `pval_true_df`
+            of the association under the re-estimated DoFs (normally not of any
+            direct interest)
+    """
+
+    # The computation is a simpler case of the fqtl method, defer to it.
+    return fqtl_pval_max_scaled_t(scaled_t2, {
+            'true_df': params['dofs'],
+            'beta_shape1': 1.0, 'beta_shape2': params['reps']
+            })
 
 def _fq_t_loss(st2s, dofs):
     """

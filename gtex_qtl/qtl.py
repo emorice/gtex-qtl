@@ -398,7 +398,7 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     _best_null_st2s = np.max(scaled_t2_xg[1:], -1)
 
     ## Estimate both meaningful parameters jointly
-    est_dofs, est_reps = stats.fit_max_scaled_t(_best_null_st2s)
+    jmle_params = stats.fit_max_scaled_t(_best_null_st2s)
 
     ## Estimate parameters in turn with fqtl procedure
     fqtl_params = stats.fqtl_fit_max_scaled_t(_best_null_st2s)
@@ -431,8 +431,9 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
             **fqtl_params,
             **stats.fqtl_pval_max_scaled_t(best_st2, fqtl_params),
             # Joint MLE estimation
-            beta_shape2_jmle=est_reps,
-            true_df_jmle=est_dofs,
+            **jmle_params,
+            **{ k + '_jmle': v for k, v in
+                stats.pval_max_scaled_t(best_st2, jmle_params).items()},
             #
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')

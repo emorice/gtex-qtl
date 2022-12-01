@@ -148,7 +148,7 @@ DEFAULT_QTL_CONFIG = {
         'window_size': 10**6,
         'maf': 0.01,
         'impute_genotype': True,
-        'num_permutations': 10**4,
+        'num_null_genes': 10**4,
         }
 """
 Default options for :func:`call_qtls`
@@ -182,6 +182,8 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
             - **maf**: minimum maf filter to apply
             - **impute_genotype**: whether to replace missing genotype dosages
               by the sample mean.
+            - **num_null_genes**: number of genes to sample to create the null
+              set for empirical null distribution estimation
 
             Defaults taken from :data:`DEFAULT_QTL_CONFIG`
 
@@ -224,11 +226,15 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     genotype = _regress_genotype(genotype, covariates)
 
     logger.info('Computing associations')
-    pairs, summaries = zip(*(
-        _call_gene(genotype, expression_item, covariates, qtl_config)
+    pairs, summaries_perm, summaries_ic = zip(*(
+        _call_gene(genotype, expression_item, expression, covariates, qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ))
-    return pd.concat(pairs), pd.DataFrame(summaries)
+
+    return (
+        pd.concat(pairs),
+        pd.DataFrame(summaries_perm), pd.DataFrame(summaries_ic)
+        )
 
 def _pack_covariates(covariates_df, expression_samples):
     """
@@ -326,20 +332,17 @@ def _dev_and_pval(slope_xg, st2_xg, n_valid_g, dofs):
 
     return slope_pval_xg, np.sqrt(slope_var_xg)
 
-def _add_null_genes(expression_item, qtl_config):
+def _make_null_genes(expression_item, n_perms):
     """
     Generate expression with no association to genotype
 
     Return an expression dictionnary looking like the expression of several
-    genes, with the first being the target gene and all the following genes
-    being the null set of genes (or decoys).
+    genes filled with the null set of genes (or decoys).
     """
 
     ## Seed rng with pos, so that permutation is different for each gene but
     ## replicable
     rng = np.random.default_rng(expression_item['meta']['start'])
-
-    n_perms = qtl_config['num_permutations']
 
     values_s = expression_item['values_s']
 
@@ -351,12 +354,8 @@ def _add_null_genes(expression_item, qtl_config):
                 -1)
             ]
 
-    # Stack true expression first and decoys in the other rows
-    expression = dict(expression_item,
-            values_xs=np.vstack((values_s[None, :], perm_values_xs))
-            )
-
-    return expression
+    return dict(expression_item,
+            values_xs=perm_values_xs)
 
 def _filter_genotype_proximity(genotype, expression_item, qtl_config):
     """
@@ -372,7 +371,7 @@ def _filter_genotype_proximity(genotype, expression_item, qtl_config):
             meta=genotype.meta.assign(tss_distance=rel_pos)
             )
 
-def _call_gene(genotype, expression_item, covariates, qtl_config):
+def _call_gene(genotype, expression_item, expression, covariates, qtl_config):
     """
     Compute all pairwise associations, plus the gene-level statistics for one
     gene
@@ -384,18 +383,85 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     # Filter genotype by distance
     genotype = _filter_genotype_proximity(genotype, expression_item, qtl_config)
 
+    pairs = _call_true_pairs(genotype, expression_item, covariates)
+
+    best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
+
+    summary_perm = _call_null_perm(
+            genotype, expression_item, covariates, qtl_config,
+            best_pair
+            )
+
+    summary_interchrom = _call_null_interchrom(
+            genotype, expression_item, expression,
+            covariates, qtl_config, best_pair
+            )
+
+    return pairs, summary_perm, summary_interchrom
+
+def _call_true_pairs(genotype, expression_item, covariates):
+    """
+    Compute association on the real gene expression and generate dataframe of
+    associations
+    """
+
+    # Make the expression look like an array of genes with one gene
+    true_expression = dict(expression_item,
+            values_xs=expression_item['values_s']
+            )
+    del true_expression['values_s']
+
+    # Residualize true gene
+    true_expression = _regress_expression(true_expression, covariates)
+
+    # Compute associations
+    slope_g, scaled_t2_g = _call_pairs(genotype, true_expression)
+
+    # Compute deviation and tests ("nominal" p-values)
+
+    ## Dofs is number of covariates plus 1 since there's an intercept
+    dofs = len(covariates['meta_c']) + 1
+
+    slope_pval_g, slope_std_g = _dev_and_pval(
+            slope_g, scaled_t2_g, np.sum(genotype.valid, -1), dofs
+            )
+
+    # Gather associations in a dataframe
+    return (
+        genotype.meta
+        .assign(**expression_item['meta'])
+        .assign(
+            pval_nominal=slope_pval_g,
+            slope=slope_g,
+            slope_se=slope_std_g,
+            slope_st2=scaled_t2_g,
+            )
+        )
+
+def _call_null_perm(genotype, expression_item, covariates, qtl_config, best_pair):
+    """
+    Compute null distribution statistics from permutations
+    """
+
     # Generate decoy genes
-    expression = _add_null_genes(expression_item, qtl_config)
+    null_expression = _make_null_genes(expression_item,
+            qtl_config['num_null_genes'])
 
-    # Residualize true and decoy genes
-    expression = _regress_expression(expression, covariates)
+    # Residualize decoy genes
+    null_expression = _regress_expression(null_expression, covariates)
 
-    # Compute association for all
-    slope_xg, scaled_t2_xg = _call_pairs(genotype, expression)
+    return _call_null_any(genotype, expression_item, null_expression, best_pair)
+
+def _call_null_any(genotype, expression_item, null_expression, best_pair):
+    """
+    Compute null distribution statistics from a pre-defined set of null genes
+    """
+    # Compute associations (only the test statistic matters)
+    _, null_scaled_t2_xg = _call_pairs(genotype, null_expression)
 
     # Estimate dofs from decoy genes
     ## Keep best of each decoy
-    _best_null_st2s = np.max(scaled_t2_xg[1:], -1)
+    _best_null_st2s = np.max(null_scaled_t2_xg, -1)
 
     ## Estimate both meaningful parameters jointly
     jmle_params = stats.fit_max_scaled_t(_best_null_st2s)
@@ -403,45 +469,59 @@ def _call_gene(genotype, expression_item, covariates, qtl_config):
     ## Estimate parameters in turn with fqtl procedure
     fqtl_params = stats.fqtl_fit_max_scaled_t(_best_null_st2s)
 
-    # Compute deviation and tests
-    ## Dofs is number of covariates plus 1 since there's an intercept
-    dofs = len(covariates['meta_c']) + 1
-
-    slope_pval_g, slope_std_g = _dev_and_pval(
-            slope_xg[0], scaled_t2_xg[0], np.sum(genotype.valid, -1), dofs
-            )
-
-    # Gather associations for the true expression
-    pairs = (
-        genotype.meta
-        .assign(**expression_item['meta'])
-        .assign(
-            pval_nominal=slope_pval_g,
-            slope=slope_xg[0],
-            slope_se=slope_std_g,
-            )
-        )
-
-    best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
-    best_st2 = np.max(scaled_t2_xg[0])
-
-    summary = dict(expression_item['meta'],
+    return dict(expression_item['meta'],
             num_var=len(genotype.meta),
             # FQTL reproduction
             **fqtl_params,
-            **stats.fqtl_pval_max_scaled_t(best_st2, fqtl_params),
+            **stats.fqtl_pval_max_scaled_t(best_pair.slope_st2, fqtl_params),
             # Joint MLE estimation
             **jmle_params,
             **{ k + '_jmle': v for k, v in
-                stats.pval_max_scaled_t(best_st2, jmle_params).items()},
+                stats.pval_max_scaled_t(best_pair.slope_st2, jmle_params).items()},
             #
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },
-            pval_perm=_empirical_pval(best_st2, _best_null_st2s)
+            pval_perm=_empirical_pval(best_pair.slope_st2, _best_null_st2s)
             )
 
-    return pairs, summary
+
+def _call_null_interchrom(genotype, expression_item, expression, covariates,
+        qtl_config, best_pair):
+    """
+    Compute null distribution statistics from between-chromosome associations
+    """
+
+    null_expression = _choose_interchrom_genes(expression_item, expression,
+            qtl_config['num_null_genes'])
+
+    # Residualize decoy genes
+    # In the future, this would be done ahead of this function
+    null_expression = _regress_expression(null_expression, covariates)
+
+    return _call_null_any(genotype, expression_item, null_expression, best_pair)
+
+def _choose_interchrom_genes(expression_item, expression, num_genes):
+    """
+    Sample genes from a different chromosome
+    """
+    # BED convention
+    chr_col = expression['meta_x'].columns[0]
+
+    target_chr = expression_item['meta'][chr_col]
+
+    igenes_indices, = np.nonzero(np.array(
+        expression['meta_x'][chr_col] != target_chr
+        ))
+
+    logger.info('Found %d inter-chrom genes to choose from out of %d',
+            len(igenes_indices), len(expression['meta_x']))
+
+    # Same rng seeding strategy as in _make_null_genes
+    rng = np.random.default_rng(expression_item['meta']['start'])
+    null_indices = rng.choice(igenes_indices, num_genes, replace=False)
+
+    return {'values_xs': expression['values_xs'][null_indices]}
 
 def _empirical_pval(stat, null_stats):
     """

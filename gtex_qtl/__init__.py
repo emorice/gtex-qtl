@@ -86,7 +86,7 @@ run_qtl = functools.partial(qtl_tool.call_qtl,
             'bed_fixed_fields': 4,
             'qtl_core_config': {
                 # Use small number of permutations for testing only
-                'num_null_genes': 100
+                'num_null_genes': 1000
                 }
             }
         )
@@ -163,4 +163,4 @@ plots.pbl.bind(all_egenes=all_egenes_perm)
 # END
 # ===
 
-default_target = plots.egenes_pval_cdf
+default_target = all_qtl

@@ -76,7 +76,6 @@ def gct_filter_columns(src_path, genotyped_subject_ids, _galp):
                     )
     return dst_path
 
-
 def extract_covariates(subject_path, sample_path):
     """
     Extract sex, WGS sequencing protocol and platform

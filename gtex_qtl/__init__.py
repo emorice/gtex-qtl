@@ -28,6 +28,7 @@ from . import (
         fastqtl,
         residualize, compare,
         plots,
+        qtl_tool,
         )
 
 # pylint: disable=redefined-outer-name
@@ -66,8 +67,8 @@ combined_covariates_file = peer.peer_and_combine(
         preprocess.gpcs_covariates,
         additional_covariates)
 
-# 4) Run fastqtl
-# ==============
+# 4) Run fastqtl and the integrated qtl caller
+# ============================================
 
 run_fastqtl = functools.partial(fastqtl.run_fastqtl,
         indexed_vcf=preprocess.filtered_indexed_vcf,
@@ -79,6 +80,23 @@ reference_fastqtl = run_fastqtl(
         covariates_file=combined_covariates_file
         )
 
+run_qtl = functools.partial(qtl_tool.call_qtl,
+        genotype_vcf=preprocess.indexed_vcf[0],
+        qtl_tool_config={
+            'bed_fixed_fields': 4,
+            'qtl_core_config': {
+                # Use small number of permutations for testing only
+                'num_null_genes': 100
+                }
+            }
+        )
+
+reference_qtl = run_qtl(
+        expression_bed=prepared_expression[0],
+        gt_covariates_file=combined_covariates_file,
+        gx_covariates_file=combined_covariates_file,
+        )
+
 # 5) Get published results and compare
 # ====================================
 
@@ -88,26 +106,17 @@ plots.pbl.bind(computed_tissue_egenes=
         reference_fastqtl['fastqtl_workflow.fastqtl_permutations_merge.genes']
         )
 
-# 6) Pre-residualization alternatives
+# Models and plots below this point are undergoing rewriting
+
+# 6) Residualization alternatives
 # ===================================
 
-# 6.1) Simplest pre-residualization
-# ---------------------------------
-
-pre_covariates_file, post_covariate_file = (
+# Inferred: PEERs, External: GPCS, Sequencing, Sex
+inf_covariates_file, ext_covariates_file = (
     residualize.split_covariates(combined_covariates_file)
     )
 
-residualized_expression = preprocess.tabix(
-        residualize.residualize(
-            prepared_expression[0],
-            pre_covariates_file)
-        )
-
-residualized_fastqtl = run_fastqtl(residualized_expression,
-            covariates_file=post_covariate_file)
-
-# 6.2) Other models
+# 6.1) Other models
 # ------------------
 
 model_specs = {
@@ -116,230 +125,42 @@ model_specs = {
         'cmk': {'model': 'cmk', 'n_groups': 100},
         }
 
-blind_expressions = {
-        shorthand: preprocess.tabix(
-            residualize.residualize_blind(
-                prepared_expression[0],
-                model_spec
-                )
+# Regress first on external covariates, then with gene covariance model
+residualized_expressions = {
+        shorthand: residualize.residualize(
+            prepared_expression[0],
+            ext_covariates_file,
+            model_spec
             )
         for shorthand, model_spec in model_specs.items()
         }
 
-blind_fastqtl = {
-        shorthand: run_fastqtl(
-            blind_expression,
-            covariates_file=post_covariate_file)
-        for shorthand, blind_expression in blind_expressions.items()
+alt_qtl = {
+        shorthand: run_qtl(
+            expression_bed=expression,
+            gt_covariates_file=combined_covariates_file, # Regress GT on Ext+PEER
+            gx_covariates_file=None, # OTOH assume GX is already regressed
+            )
+        for shorthand, expression in residualized_expressions.items()
         }
 
 # 6.3) Gather runs
 # ----------------
 
-all_fastqtl = {
-        'reproduction': fastqtl,
-        'pre-residualization': residualized_fastqtl,
-        **blind_fastqtl
+all_qtl = {
+        'reproduction': reference_fastqtl,
+        'reimplementation': reference_qtl,
+        **alt_qtl
         }
 
-# 6.3) Plots
-# ----------
+all_egenes_perm = compare.all_egenes(
+    {'published': downloads.published_tissue_egenes()},
+    { k: all_qtl[k] for k in ['reproduction', 'reimplementation']}
+    )
 
-pbl = galp.Block()
-
-pbl.bind(res_vs_orig_raster=compare.datashader_scatter(
-        compare.all_pvals(fastqtl),
-        compare.all_pvals(residualized_fastqtl),
-        log=False
-        ))
-
-@pbl.view
-def residualized_pvals_plot(res_vs_orig_raster):
-    """
-    Residualized vs original p-values for all pairs
-    """
-    fig = compare.plot_ds_scatter(res_vs_orig_raster)
-    fig.update_layout({
-        'title':
-        'Comparison of nominal p-values for all tested gene-variant pairs',
-        'xaxis.title': 'Reproduced p-value',
-        'yaxis.title': 'Pre-residualized p-value',
-        })
-    return fig
-
-
-pbl.bind(blind_vs_res_raster=compare.datashader_scatter(
-        compare.all_pvals(residualized_fastqtl),
-        compare.all_pvals(blind_fastqtl['linear']),
-        log=True
-        ))
-
-@pbl.view
-def blind_pvals_plot(blind_vs_res_raster):
-    """
-    Blind linear vs residualized p-values for all pairs
-    """
-    fig = compare.plot_ds_scatter(blind_vs_res_raster)
-    fig.update_layout({
-        'title':
-        'Comparison of nominal p-values for all tested gene-variant pairs',
-        'xaxis.title': 'Pre-residualized p-value',
-        'yaxis.title': 'Blind linear p-value',
-        })
-    return fig
-
-pbl.bind(pvals_hist=compare.histogram(
-    compare.all_pvals(residualized_fastqtl),
-    ))
-
-@pbl.view
-def pvals_histogram_plot(pvals_hist):
-    """
-    Histogram of p-values for all pairs
-    """
-    fig = compare.plot_histogram(pvals_hist)
-    fig.update_layout({
-        'title':
-        'Distribution of raw p-values for all tested gene-variant pairs',
-        'xaxis.title': 'p-value',
-        'yaxis.title': 'Number of gene-variant pairs'
-        })
-    return fig
-
-pbl.bind(pvals_quantiles_ref=compare.quantiles(
-    compare.all_pvals(all_fastqtl['pre-residualization'])
-    ))
-pbl.bind(pvals_quantiles_alt=compare.quantiles(
-    compare.all_pvals(all_fastqtl['cmk'])
-    ))
-
-pbl.bind(qq_log=True)
-pbl.bind(qq_relative=True)
-
-@pbl.view
-def pvals_qq_plot(pvals_quantiles_alt, pvals_quantiles_ref=None, qq_log=False,
-        qq_relative=False):
-    """
-    Uniform qq plot
-    """
-
-    probas_alt, quantiles_alt = pvals_quantiles_alt
-
-    if pvals_quantiles_ref is None:
-        probas_ref, quantiles_ref = probas_alt, probas_alt
-    else:
-        probas_ref, quantiles_ref = pvals_quantiles_ref
-
-    if not np.allclose(probas_ref, probas_alt):
-        raise ValueError('Need matching probas')
-
-    neutral = np.array(quantiles_ref)
-    if qq_relative:
-        quantiles_alt /= quantiles_ref
-        neutral /= quantiles_ref
-
-    return go.Figure(
-        data=[
-            go.Scatter(
-                x=quantiles_ref,
-                y=quantiles_alt,
-                mode='lines',
-                name='quantiles',
-                hovertext=[f'{100 * p:.6g} %' for p in probas_ref],
-                yaxis='y2'
-            ),
-            go.Scatter(
-                x=quantiles_ref,
-                y=neutral,
-                mode='lines',
-                name='y = x',
-                yaxis='y2'
-                ),
-            go.Scatter(
-                x=quantiles_ref,
-                y=probas_ref,
-                mode='lines',
-                name='Reference CDF',
-                yaxis='y1'
-                )
-            ],
-        layout={
-            'width': 1000,
-            'height': 1250,
-            'xaxis': {
-                'title': 'Reference p-values quantiles',
-                'type': 'log' if qq_log else 'linear',
-                'exponentformat': 'power',
-                'linecolor': 'black',
-                'ticks': 'outside',
-                'position': 0.22,
-                },
-            'yaxis2': {
-                'title': 'Alternative p-values quantiles',
-                'type': 'log' if qq_log and not qq_relative else 'linear',
-                'exponentformat': 'power',
-                'linecolor': 'black',
-                'ticks': 'outside',
-                'domain': [0.22, 1.0]
-                },
-            'yaxis1': {
-                'title': 'CDF',
-                'domain': [0.0, 0.16],
-                'type': 'log',
-                'ticks': 'outside',
-                'linecolor': 'black',
-                },
-            }
-        )
-
-pbl.bind(egene_counts={
-    exp_name: compare.count_egenes(results)
-    for exp_name, results in all_fastqtl.items()
-    })
-
-@pbl.view
-def egenes_plot(egene_counts):
-    """
-    Bar chart of number of "eGenes"
-    """
-
-    names, counts = zip(*egene_counts.items())
-    egenes, pairs = zip(*counts)
-
-    return go.Figure(
-            data=[
-                go.Bar(
-                    x=egenes,
-                    y=names,
-                    orientation='h',
-                    name='eGenes',
-                    ),
-                go.Bar(
-                    x=pairs,
-                    y=names,
-                    orientation='h',
-                    xaxis='x2',
-                    name='gene-variant pairs',
-                    )
-            ],
-            layout={
-                'title': 'Number of "eGenes" (genes with one significant eQTL '
-                    'at FDR ≤ 0.05) and gene-variant pairs per method',
-                    'yaxis': {'title': 'Pipeline run code name'},
-                    'xaxis': {'title': 'Number of genes',
-                        'rangemode': 'tozero',
-                        'exponentformat': 'none',
-                        'domain': [0., 0.49]},
-                    'xaxis2': {'title': 'Number of significant variant-genes pairs',
-                        'rangemode': 'tozero',
-                        'exponentformat': 'none',
-                        'domain': [0.51, 1.0]},
-                }
-            )
+plots.pbl.bind(all_egenes=all_egenes_perm)
 
 # END
 # ===
 
-#plots = [ residualized_pvals_plot, blind_pvals_plot ]
-
-default_target = plots.qvalues_cmp # reference_fastqtl # egenes_plot # all_fastqtl
+default_target = plots.egenes_pval_cdf

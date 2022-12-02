@@ -2,6 +2,7 @@
 Collection of pipeline plots
 """
 
+import numpy as np
 import galp
 import pandas as pd
 import plotly.graph_objects as go
@@ -74,5 +75,34 @@ def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
                 },
             'height': 1000,
             'width': 1000,
+            }
+        )
+
+@pbl.view
+def egenes_pval_cdf(all_egenes):
+    """
+    CDF of adjusted p-values
+    """
+    return go.Figure([
+        go.Scatter(
+            x=np.sort(egenes['pval_beta']),
+            y=np.arange(len(egenes)) + 1,
+            mode='lines',
+            name=pipeline
+            )
+        for pipeline, egenes in all_egenes.items()
+        ], {
+            'title': 'CDF of gene-level adjusted pvalues of best association, '
+                'across all expressed genes',
+            'xaxis': {
+                'title': 'Multiple-comparison-adjusted pvalue of best '
+                    'association',
+                'type': 'log',
+                'exponentformat': 'power',
+                },
+            'yaxis': {
+                'title': 'Number of genes (cumulative)'
+                },
+            'height': 1000,
             }
         )

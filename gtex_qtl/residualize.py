@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 import galp
-import gemz.models
+import gemz_galp.models
 
 from . import stats
 
@@ -54,54 +54,32 @@ def write_expression(path, expr_gs, samples, expr_meta):
     # Write back as uncompressed tsv
     expr_df_gs.to_csv(path, sep='\t', index=False)
 
-def regress(expr_gs, cov_cs):
+@pbl.step
+def residualize(prepared_expression, covariates, model_spec, _galp):
     """
-    Regress expression against covariates and return residuals
+    Regress expression first on covariates, then on itself with the specified
+    model
     """
-    return stats.regress(expr_gs, cov_cs)
-
-@pbl.step(vtag='0.2: intercept')
-def residualize(prepared_expression, combined_covariates, _galp):
-    """
-    Perform the residualization as a separate step and write back the result as
-    a new expression file.
-
-    Here residualization is taken as meaning regressing the prepared expression
-    linearily on the covariates and taking the residuals of this regression.
-    """
-
-    # Shorthands: g - genes, s - samples, c - covariates
-
     # Read expression
     samples, expr_gs, expr_meta = read_expression(prepared_expression)
 
     # Read covariates
-    cov_cs = read_covariates(samples, combined_covariates)
+    cov_cs = read_covariates(samples, covariates)
 
-    res_gs = regress(expr_gs, cov_cs)
+    # Regress expression on covariates
+    # Note: this will add an intercept before regressing
+    res_gs = stats.regress(expr_gs, cov_cs)
 
-    # Write back as uncompressed tsv
-    dst_path = _galp.new_path() + '.bed'
-    write_expression(dst_path, res_gs, samples, expr_meta)
-    return dst_path
+    # Build parallel cross-regression graph
+    return _residualize_writeback(
+        gemz_galp.models.cv_residualize(model_spec, res_gs.T),
+        samples, expr_meta)
 
-@pbl.step(vtag='0.2: intercept')
-def residualize_blind(prepared_expression, model_spec, _galp):
-    """
-    Regress on given covariates, then linearily on other genes
-    """
-
-    # Read expression
-    samples, expr_gs, expr_meta = read_expression(prepared_expression)
-
-    # Perform main blind regression
-    #model_spec = {'model': 'linear'}
-    ## small dimension first
-    res_gs = gemz.models.cv_residualize(model_spec, expr_gs.T).T
-
+@pbl.step
+def _residualize_writeback(res_sg, samples, expr_meta, _galp):
     # Write back
-    dst_path = _galp.new_path() + '.bed'
-    write_expression(dst_path, res_gs, samples, expr_meta)
+    dst_path = _galp.new_path()
+    write_expression(dst_path, res_sg.T, samples, expr_meta)
     return dst_path
 
 @pbl.step(items=2)
@@ -110,22 +88,19 @@ def split_covariates(combined_covariates_file, _galp):
     Split the original combined covariate files into two sets.
 
     Returns:
-        A tuple of paths to resp. the pre and post covariate files.
-
-    The first set are covariates to use in pre-resisdualization, the second the
-    set to pass to the QTL caller.
+        A tuple of paths to resp. the inferred and external covariates
     """
     cov_df = pd.read_table(combined_covariates_file)
 
-    is_pre = cov_df['ID'].str.startswith('InferredCov')
+    is_inf = cov_df['ID'].str.startswith('InferredCov')
 
-    pre_df = cov_df[is_pre]
-    post_df = cov_df[~is_pre]
+    inf_df = cov_df[is_inf]
+    ext_df = cov_df[~is_inf]
 
-    pre_path = _galp.new_path()
-    pre_df.to_csv(pre_path, sep='\t', index=False)
+    inf_path = _galp.new_path()
+    inf_df.to_csv(inf_path, sep='\t', index=False)
 
-    post_path = _galp.new_path()
-    post_df.to_csv(post_path, sep='\t', index=False)
+    ext_path = _galp.new_path()
+    ext_df.to_csv(ext_path, sep='\t', index=False)
 
-    return pre_path, post_path
+    return inf_path, ext_path

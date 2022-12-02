@@ -213,3 +213,22 @@ def count_egenes(results):
                 )
             )
         )
+
+@pbl.step
+def all_egenes(egenes, all_qtls):
+    """
+    Extract gene summaries computed by permutation
+    """
+
+    egene_files = dict(egenes, **{
+        pipeline: (
+            results[EGENES] if EGENES in results
+            else results['egenes_perm']
+            )
+        for pipeline, results in all_qtls.items()
+        })
+
+    return {
+        pipeline: pd.read_table(file, compression='gzip')
+        for pipeline, file in egene_files.items()
+        }

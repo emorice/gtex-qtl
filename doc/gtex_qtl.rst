@@ -60,6 +60,14 @@ gtex\_qtl.qtl module
    :undoc-members:
    :show-inheritance:
 
+gtex\_qtl.qtl\_tool module
+--------------------------
+
+.. automodule:: gtex_qtl.qtl_tool
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 gtex\_qtl.residualize module
 ----------------------------
 

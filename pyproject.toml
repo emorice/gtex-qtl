@@ -3,11 +3,13 @@ name = "gtex-qtl"
 version = "0.1.dev1"
 dependencies = [
     "pandas",
+    "pyarrow",
     "plotly",
     "datashader",
     "galp @ git+ssh://git@github.com/emorice/galp.git",
     "wdl_galp @ git+ssh://git@github.com/emorice/wdl-galp.git",
-    "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git"
+    "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git",
+    "gemz_galp @ git+ssh://git@github.com/emorice/gemz-galp.git",
     ]
 
 [project.optional-dependencies]

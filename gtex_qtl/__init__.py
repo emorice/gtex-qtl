@@ -144,6 +144,20 @@ alt_qtl = {
         for shorthand, expression in residualized_expressions.items()
         }
 
+# alt_qtl['linear_nogtpeer100'] = qtl_tool.call_qtl(
+#         genotype_vcf=preprocess.indexed_vcf[0],
+#         qtl_tool_config={
+#             'bed_fixed_fields': 4,
+#             'qtl_core_config': {
+#                 # Use small number of permutations for testing only
+#                 'num_null_genes': 100
+#                 }
+#             },
+#         expression_bed=residualized_expressions['linear'],
+#         gt_covariates_file=ext_covariates_file, # Regress GT on Ext only
+#         gx_covariates_file=None, # OTOH assume GX is already regressed
+#         )
+
 # 6.3) Gather runs
 # ----------------
 
@@ -174,12 +188,14 @@ Gene-level summaries for all inter-chrom runs
 
 plots.pbl.bind(all_egenes=all_egenes_ic)
 
-all_pval_quants_ic = {
-        ppl: compare.all_pairs_adjusted_quantiles(qtl)
+all_pval_hist_ic = {
+        ppl: compare.all_pairs_adjusted_hist(qtl)
         for ppl, qtl in qtls_ic.items()
         }
+
+plots.pbl.bind(all_pairs_pvals=all_pval_hist_ic)
 
 # END
 # ===
 
-default_target = all_pval_quants_ic
+default_target = all_pval_hist_ic

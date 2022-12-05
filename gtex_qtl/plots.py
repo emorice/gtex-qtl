@@ -115,3 +115,33 @@ def egenes_pval_cdf(all_egenes):
             'template': template
             }
         )
+
+@pbl.view
+def pairs_pval_cdf(all_pairs_pvals):
+    """
+    Quantiles of adjusted p-values of all associations
+    """
+    return go.Figure([
+        go.Scatter(
+            x=edges[1:],
+            y=np.cumsum(counts),
+            mode='lines',
+            name=pipeline
+            )
+        for pipeline, (counts, edges) in all_pairs_pvals.items()
+        ], {
+            'title': 'Quantiles of gene-level adjusted p-values of all '
+                'associations',
+            'xaxis': {
+                'title': 'P-value',
+                'type': 'log',
+                'range': [ -8.1, -0.9 ]
+                },
+            'yaxis': {
+                'title': 'Number of associations (cumulative)',
+                'exponentformat': 'SI',
+                'rangemode': 'tozero',
+                },
+            'template': template
+            }
+        )

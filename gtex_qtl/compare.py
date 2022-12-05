@@ -227,9 +227,9 @@ def all_egenes(egenes_files):
         }
 
 @pbl.step
-def all_pairs_adjusted_quantiles(qtl):
+def all_pairs_adjusted_hist(qtl):
     """
-    Quantiles of per-gene adjusted p-values for all associations in a qtl run
+    Counts of per-gene adjusted p-values for all associations in a qtl run
     """
     param_names = ['true_df', 'beta_shape1', 'beta_shape2']
 
@@ -251,4 +251,4 @@ def all_pairs_adjusted_quantiles(qtl):
 
     all_pvals = np.hstack(all_pvals)
 
-    return np.quantile(all_pvals, np.linspace(0., 1., 1000))
+    return np.histogram(all_pvals, 10**np.linspace(-10., 0., 1000))

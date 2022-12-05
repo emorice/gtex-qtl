@@ -13,6 +13,8 @@ import plotly.graph_objects as go
 
 import galp
 
+from . import stats
+
 pbl = galp.Block()
 
 ALL_PAIRS = 'fastqtl_workflow.fastqtl_nominal.allpairs'
@@ -215,20 +217,38 @@ def count_egenes(results):
         )
 
 @pbl.step
-def all_egenes(egenes, all_qtls):
+def all_egenes(egenes_files):
     """
     Extract gene summaries computed by permutation
     """
-
-    egene_files = dict(egenes, **{
-        pipeline: (
-            results[EGENES] if EGENES in results
-            else results['egenes_perm']
-            )
-        for pipeline, results in all_qtls.items()
-        })
-
     return {
         pipeline: pd.read_table(file, compression='gzip')
-        for pipeline, file in egene_files.items()
+        for pipeline, file in egenes_files.items()
         }
+
+@pbl.step
+def all_pairs_adjusted_quantiles(qtl):
+    """
+    Quantiles of per-gene adjusted p-values for all associations in a qtl run
+    """
+    param_names = ['true_df', 'beta_shape1', 'beta_shape2']
+
+    fqtl_params = (
+        pd.read_table(qtl['egenes_ic'], compression='gzip')
+        [['gene_id', *param_names]]
+        .set_index('gene_id')
+        )
+
+    all_pvals = []
+    for file in qtl['all_pairs']:
+        pairs = pd.read_feather(file, ['gene_id', 'slope_st2'])
+        pairs = pairs.join(fqtl_params, on='gene_id')
+        pvals = stats.fqtl_pval_max_scaled_t(
+                pairs['slope_st2'].to_numpy(),
+                {param: pairs[param].to_numpy() for param in param_names}
+                )
+        all_pvals.append(pvals['pval_beta'])
+
+    all_pvals = np.hstack(all_pvals)
+
+    return np.quantile(all_pvals, np.linspace(0., 1., 1000))

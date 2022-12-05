@@ -5,10 +5,16 @@ Collection of pipeline plots
 import numpy as np
 import galp
 import pandas as pd
+import plotly
 import plotly.graph_objects as go
 
-pbl = galp.Block()
+template = go.layout.Template(layout={
+    'width': 1200, 'height': 800, 'autosize': False,
+    'yaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power'},
+    'xaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power'}
+})
 
+pbl = galp.Block()
 
 pbl.bind(cmp_variable=
         'qval'
@@ -92,17 +98,20 @@ def egenes_pval_cdf(all_egenes):
             )
         for pipeline, egenes in all_egenes.items()
         ], {
-            'title': 'CDF of gene-level adjusted pvalues of best association, '
+            'title': 'CDF of gene-level adjusted p-values of best association, '
                 'across all expressed genes',
             'xaxis': {
-                'title': 'Multiple-comparison-adjusted pvalue of best '
+                'title': 'Multiple-comparison adjusted p-value of best '
                     'association',
                 'type': 'log',
-                'exponentformat': 'power',
+                'range': [-8.1, 0.1],
                 },
             'yaxis': {
-                'title': 'Number of genes (cumulative)'
+                'title': 'Number of genes (cumulative)',
+                'exponentformat': 'none',
+                'rangemode': 'tozero',
                 },
             'height': 1000,
+            'template': template
             }
         )

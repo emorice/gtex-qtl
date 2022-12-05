@@ -17,7 +17,7 @@ DEFAULT_QTL_TOOL_CONFIG = {
     'qtl_core_config': None
     }
 
-@pbl.step
+@pbl.step(vtag='0.2 merge_qtl-0.2')
 def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
         gx_covariates_file, qtl_tool_config=None):
     """
@@ -88,7 +88,7 @@ def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
         'egenes_ic': summary_ic
         }
 
-@pbl.step
+@pbl.step(vtag='0.2 forward paths')
 def merge_qtl(bins, _galp):
     """
     Concatenate results of all given bins
@@ -115,6 +115,6 @@ def merge_qtl(bins, _galp):
         egenes_paths[key] = path
 
     return {
-        'all_pairs': pairs_path,
+        'all_pairs': [b['all_pairs_path'] for b in bins],
         **egenes_paths
         }

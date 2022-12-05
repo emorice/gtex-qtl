@@ -153,14 +153,33 @@ all_qtl = {
         **alt_qtl
         }
 
-all_egenes_perm = compare.all_egenes(
-    {'published': downloads.published_tissue_egenes()},
-    { k: all_qtl[k] for k in ['reproduction', 'reimplementation']}
-    )
+all_egenes_perm = compare.all_egenes({
+    'published': downloads.published_tissue_egenes(),
+    'reproduction': all_qtl['reproduction'][compare.EGENES],
+    'reimplementation (perm)': all_qtl['reimplementation']['egenes_perm'],
+    'reimplementation (interchrom)': all_qtl['reimplementation']['egenes_ic'],
+    })
 
-plots.pbl.bind(all_egenes=all_egenes_perm)
+qtls_ic = {'reimplementation': reference_qtl, **alt_qtl}
+"""
+All runs with comparable inter-chrom statistics
+"""
+
+all_egenes_ic = compare.all_egenes({
+    k: qtl['egenes_ic'] for k, qtl in qtls_ic.items()
+    })
+"""
+Gene-level summaries for all inter-chrom runs
+"""
+
+plots.pbl.bind(all_egenes=all_egenes_ic)
+
+all_pval_quants_ic = {
+        ppl: compare.all_pairs_adjusted_quantiles(qtl)
+        for ppl, qtl in qtls_ic.items()
+        }
 
 # END
 # ===
 
-default_target = all_qtl
+default_target = all_pval_quants_ic

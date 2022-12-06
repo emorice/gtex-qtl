@@ -198,4 +198,4 @@ plots.pbl.bind(all_pairs_pvals=all_pval_hist_ic)
 # END
 # ===
 
-default_target = all_pval_hist_ic
+default_target = all_egenes_perm

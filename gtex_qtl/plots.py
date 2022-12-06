@@ -5,14 +5,25 @@ Collection of pipeline plots
 import numpy as np
 import galp
 import pandas as pd
-import plotly
 import plotly.graph_objects as go
 
 template = go.layout.Template(layout={
-    'width': 1200, 'height': 800, 'autosize': False,
-    'yaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power'},
+    # For slides
+    'width': 600, 'height': 400,
+    # For display
+    'autosize': False,
+    # 'width': 2100, 'height': 800,
+    'yaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power',
+        'title': {'standoff': 100}},
     'xaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power'}
-})
+}, data={
+    'scatter': [{
+        'line': {'width': 1}
+        }]
+    }
+)
+
+_EXCLUDES = {'linear'}
 
 pbl = galp.Block()
 
@@ -94,9 +105,11 @@ def egenes_pval_cdf(all_egenes):
             x=np.sort(egenes['pval_beta']),
             y=np.arange(len(egenes)) + 1,
             mode='lines',
-            name=pipeline
+            name=pipeline,
             )
-        for pipeline, egenes in all_egenes.items()
+        for pipeline, egenes in sorted(all_egenes.items(),
+            key=lambda p: p[1]['pval_beta'].median())
+        if pipeline != 'linear'
         ], {
             'title': 'CDF of gene-level adjusted p-values of best association, '
                 'across all expressed genes',
@@ -111,7 +124,6 @@ def egenes_pval_cdf(all_egenes):
                 'exponentformat': 'none',
                 'rangemode': 'tozero',
                 },
-            'height': 1000,
             'template': template
             }
         )
@@ -128,7 +140,11 @@ def pairs_pval_cdf(all_pairs_pvals):
             mode='lines',
             name=pipeline
             )
-        for pipeline, (counts, edges) in all_pairs_pvals.items()
+        for pipeline, (counts, edges) in sorted(
+            all_pairs_pvals.items(),
+            key=lambda p: -sum(p[1][0][:len(p[1][0]) // 2])
+            )
+        if pipeline not in _EXCLUDES
         ], {
             'title': 'Quantiles of gene-level adjusted p-values of all '
                 'associations',

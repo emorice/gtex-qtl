@@ -3,9 +3,10 @@ Collection of pipeline plots
 """
 
 import numpy as np
-import galp
 import pandas as pd
 import plotly.graph_objects as go
+
+from galp import view
 
 template = go.layout.Template(layout={
     # For slides
@@ -25,10 +26,8 @@ template = go.layout.Template(layout={
 
 _EXCLUDES = {'linear'}
 
-pbl = galp.Block()
-
-pbl.bind(cmp_variable=
-        'qval'
+#pbl.bind(cmp_variable=
+#        'qval'
         #'num_var'
         #'maf'
         #'pval_nominal'
@@ -36,9 +35,9 @@ pbl.bind(cmp_variable=
         #'beta_shape2'
         #'true_df'
         #'pval_beta'
-        )
+#        )
 
-@pbl.view
+@view
 def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
     cmp_variable='qval'):
     """
@@ -95,7 +94,7 @@ def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
             }
         )
 
-@pbl.view
+@view
 def egenes_pval_cdf(all_egenes):
     """
     CDF of adjusted p-values
@@ -128,7 +127,7 @@ def egenes_pval_cdf(all_egenes):
             }
         )
 
-@pbl.view
+@view
 def pairs_pval_cdf(all_pairs_pvals):
     """
     Quantiles of adjusted p-values of all associations

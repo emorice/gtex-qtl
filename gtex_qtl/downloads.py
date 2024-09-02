@@ -9,13 +9,12 @@ import gzip
 import urllib
 import shutil
 
-import galp
 import pandas as pd
+import galp
+from galp import step
 
-pbl = galp.Block()
-
-@pbl.step(vtag='0.3: suffixes')
-def urlretrieve(url, _galp, preserve_suffix=True, gunzip=False):
+@step
+def urlretrieve(url, preserve_suffix=True, gunzip=False):
     """
     Download file from url and check it in the store
     """
@@ -28,7 +27,7 @@ def urlretrieve(url, _galp, preserve_suffix=True, gunzip=False):
             suffix = re.sub('.gz$', '', suffix)
     else:
         suffix = ''
-    to_path = _galp.new_path() + suffix
+    to_path = galp.new_path() + suffix
 
     with contextlib.ExitStack() as stack:
         in_fd = stack.enter_context(urllib.request.urlopen(url))
@@ -44,13 +43,13 @@ _GTEX_GENE_MODEL_URL = (
     'gencode.v26.GRCh38.ERCC.genes.gtf.gz'
     )
 
-input_files = dict(
-    wb_tpm = urlretrieve(_GTEX_BASE_URL +
+input_files = {
+        'wb_tpm': urlretrieve(_GTEX_BASE_URL +
             'rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'),
-    wb_counts = urlretrieve(_GTEX_BASE_URL +
+        'wb_counts': urlretrieve(_GTEX_BASE_URL +
             'rna_seq_data/gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'),
-    gene_model = urlretrieve(_GTEX_GENE_MODEL_URL, gunzip=True)
-    )
+        'gene_model': urlretrieve(_GTEX_GENE_MODEL_URL, gunzip=True)
+        }
 """
 Publicly available files needed as inputs of the pipeline.
 
@@ -61,23 +60,23 @@ Note that the expression data files cannot be used as-is.
 In :mod:`gtex_qtl.preprocess` utils to filter out the extra columns are provided.
 """
 
-@pbl.step
-def untar(path, _galp):
+@step
+def untar(path):
     """
     Extract tar archive
     """
-    dst_path = _galp.new_path()
+    dst_path = galp.new_path()
     os.makedirs(dst_path, exist_ok=True)
     shutil.unpack_archive(path, dst_path)
     return dst_path
 
-pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
-        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
-        )))
+#pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
+#        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
+#        )))
 
-pbl.bind(ref_tissue_name='Whole_Blood')
+#pbl.bind(ref_tissue_name='Whole_Blood')
 
-@pbl.step
+@step
 def published_tissue_expression(reference_expression, ref_tissue_name):
     """
     Path to specific tissue in extracted archive
@@ -89,7 +88,7 @@ def published_tissue_expression(reference_expression, ref_tissue_name):
             f'{ref_tissue_name}.v8.normalized_expression.bed.gz'
             )
 
-@pbl.step
+@step
 def expression_shape(expression_file):
     """
     Extract basic counts from expression file
@@ -101,15 +100,15 @@ def expression_shape(expression_file):
         'num_samples': sum(col.startswith('GTEX-') for col in expr_df)
         }
 
-pbl.bind(reference_results=untar(urlretrieve(_GTEX_BASE_URL +
-        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
-    )))
+#pbl.bind(reference_results=untar(urlretrieve(_GTEX_BASE_URL +
+#        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
+#    )))
 
 reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
         'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
         ))
 
-@pbl.step
+@step
 def published_tissue_egenes(reference_results, ref_tissue_name):
     """
     Path to specific tissue results

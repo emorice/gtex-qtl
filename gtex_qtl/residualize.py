@@ -6,11 +6,10 @@ import numpy as np
 import pandas as pd
 
 import galp
+from galp import step
 import gemz_galp.models
 
 from . import stats
-
-pbl = galp.Block()
 
 def read_expression(path):
     """
@@ -54,8 +53,8 @@ def write_expression(path, expr_gs, samples, expr_meta):
     # Write back as uncompressed tsv
     expr_df_gs.to_csv(path, sep='\t', index=False)
 
-@pbl.step
-def residualize(prepared_expression, covariates, model_spec, _galp):
+@step
+def residualize(prepared_expression, covariates, model_spec):
     """
     Regress expression first on covariates, then on itself with the specified
     model
@@ -75,15 +74,15 @@ def residualize(prepared_expression, covariates, model_spec, _galp):
         gemz_galp.models.cv_residualize(model_spec, res_gs.T),
         samples, expr_meta)
 
-@pbl.step
-def _residualize_writeback(res_sg, samples, expr_meta, _galp):
+@step
+def _residualize_writeback(res_sg, samples, expr_meta):
     # Write back
-    dst_path = _galp.new_path()
+    dst_path = galp.new_path()
     write_expression(dst_path, res_sg.T, samples, expr_meta)
     return dst_path
 
-@pbl.step(items=2)
-def split_covariates(combined_covariates_file, _galp):
+@step(items=2)
+def split_covariates(combined_covariates_file):
     """
     Split the original combined covariate files into two sets.
 
@@ -97,10 +96,10 @@ def split_covariates(combined_covariates_file, _galp):
     inf_df = cov_df[is_inf]
     ext_df = cov_df[~is_inf]
 
-    inf_path = _galp.new_path()
+    inf_path = galp.new_path()
     inf_df.to_csv(inf_path, sep='\t', index=False)
 
-    ext_path = _galp.new_path()
+    ext_path = galp.new_path()
     ext_df.to_csv(ext_path, sep='\t', index=False)
 
     return inf_path, ext_path

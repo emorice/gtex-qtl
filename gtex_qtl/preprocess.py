@@ -15,26 +15,25 @@ import subprocess
 import gzip
 import contextlib
 
-import galp
-import wdl_galp
 import pandas as pd
+import galp
+import galp.wdl
+from galp import step
 
 from .utils import broad_wdl
 
-pbl = galp.Block()
+#pbl.bind(subject_phenotypes_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE)
+#pbl.bind(sample_attributes_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE)
 
-pbl.bind(subject_phenotypes_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE)
-pbl.bind(sample_attributes_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE)
-
-@pbl.step(vtag='0.5: naming', items=2)
-def additional_covariates(subject_phenotypes_path, sample_attributes_path, _galp):
+@step(vtag='0.5: naming', items=2)
+def additional_covariates(subject_phenotypes_path, sample_attributes_path):
     """
     Generate a covariate file with extra covariates.
 
     Also returns the list of the available subject IDs. Availability mostly
     means that a WGS sample was found in the metadata files for a given subject.
     """
-    dst_path = _galp.new_path()
+    dst_path = galp.new_path()
 
     cov_df = extract_covariates(
             subject_path=subject_phenotypes_path,
@@ -48,13 +47,13 @@ def additional_covariates(subject_phenotypes_path, sample_attributes_path, _galp
         )
     return dst_path, list(cov_df.columns[1:])
 
-@pbl.step
-def gct_filter_columns(src_path, genotyped_subject_ids, _galp):
+@step
+def gct_filter_columns(src_path, genotyped_subs):
     """
     Drop the extra "id" column present in the public expression files, and
     subset samples with available genotype information.
     """
-    dst_path = _galp.new_path() + '.gct.gz'
+    dst_path = galp.new_path() + '.gct.gz'
     with gzip.open(src_path, 'rt', encoding='ascii') as src:
         with gzip.open(dst_path, 'wt', encoding='ascii') as dst:
             # Headers
@@ -142,7 +141,7 @@ def extract_covariates(subject_path, sample_path):
 
     return cov_df
 
-@pbl.step
+@step
 def expression_sample_ids(counts):
     """
     List sample IDs from expression file
@@ -164,15 +163,15 @@ def expression_sample_ids(counts):
 
         return gtex_ids
 
-@pbl.step
-def sample_participant_lookup(expression_sample_ids, _galp):
+@step
+def sample_participant_lookup(expression_sample_ids):
     """
     Generate a lookup file matching samples to participants from a list of
     samples by simply interpreting the first two dash-separated components as
     the participant id. So "AA-BB-CC-DD" is considered to be a sample from
     participant "AA-BB".
     """
-    path = _galp.new_path()
+    path = galp.new_path()
     with open(path, 'w', encoding='ascii') as stream:
         print('sample_id\tparticipant_id', file=stream)
         for sample_id in expression_sample_ids:
@@ -180,12 +179,12 @@ def sample_participant_lookup(expression_sample_ids, _galp):
             print(f'{sample_id}\t{participant_id}', file=stream)
     return path
 
-@pbl.step(vtag='0.2 extension')
-def tabix(src_path, _galp):
+@step(vtag='0.2 extension')
+def tabix(src_path):
     """
     Compress and index file with tabix
     """
-    dst_path = _galp.new_path()
+    dst_path = galp.new_path()
 
     # Try to preserve extension
     dst_path += '.'.join([''] + os.path.basename(src_path).split('.')[1:])
@@ -202,14 +201,14 @@ def tabix(src_path, _galp):
 
     return dst_path, index_path
 
-@pbl.step(vtag='0.2: both paths')
+@step(vtag='0.2: both paths')
 def indexed_vcf(_galp):
     """
     Symlink then index with tabix the vcf given in local_settings
 
     TODO: delete and replace with `tabix` step
     """
-    path = _galp.new_path()
+    path = galp.new_path()
     os.symlink(
         local_settings.GTEX_GENOTYPE_FILE,
         path
@@ -222,13 +221,13 @@ def indexed_vcf(_galp):
 
     return path, index_path
 
-@pbl.step
+@step
 def filtered_indexed_vcf(_galp, maf=0.01):
     """
     Filter out variants with less than `maf` maf, then recompress and index the
     result
     """
-    dst_path = _galp.new_path() + '.vcf.gz'
+    dst_path = galp.new_path() + '.vcf.gz'
 
     in_path = local_settings.GTEX_GENOTYPE_FILE
 
@@ -248,12 +247,12 @@ def filtered_indexed_vcf(_galp, maf=0.01):
 
     return dst_path, dst_path + '.tbi'
 
-@pbl.step
-def chr_list(filtered_indexed_vcf, _galp):
+@step
+def chr_list(filtered_indexed_vcf):
     """
     File with the chromosome list from indexed vcf
     """
-    path = _galp.new_path()
+    path = galp.new_path()
     with open(path, 'wb') as fobj:
         subprocess.run(['tabix', '-l', filtered_indexed_vcf[0]], stdout=fobj, check=True)
     return path
@@ -308,8 +307,8 @@ def prepare_expression(wb_tpm, wb_counts, gene_model):
                     ]
         )
 
-@pbl.step
-def filter_format_pcs(genotype_pcs_path, _galp):
+@step
+def filter_format_pcs(genotype_pcs_path):
     """
     Filter first PCs and format them into a covariate file
     """
@@ -326,7 +325,7 @@ def filter_format_pcs(genotype_pcs_path, _galp):
         .rename({'index': 'ID'}, axis=1)
         )
 
-    dst_path = _galp.new_path()
+    dst_path = galp.new_path()
     pcs_df.to_csv(dst_path, sep='\t', index=False)
     return dst_path
 

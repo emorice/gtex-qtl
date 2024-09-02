@@ -3,15 +3,13 @@ Collection of pipeline plots
 """
 
 import numpy as np
-import galp
 import pandas as pd
 import plotly.graph_objects as go
 
-pbl = galp.Block()
+from galp import view
 
-
-pbl.bind(cmp_variable=
-        'qval'
+#pbl.bind(cmp_variable=
+#        'qval'
         #'num_var'
         #'maf'
         #'pval_nominal'
@@ -19,9 +17,9 @@ pbl.bind(cmp_variable=
         #'beta_shape2'
         #'true_df'
         #'pval_beta'
-        )
+#        )
 
-@pbl.view
+@view
 def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
     cmp_variable='qval'):
     """
@@ -78,7 +76,7 @@ def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
             }
         )
 
-@pbl.view
+@view
 def egenes_pval_cdf(all_egenes):
     """
     CDF of adjusted p-values

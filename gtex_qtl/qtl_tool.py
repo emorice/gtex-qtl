@@ -3,13 +3,11 @@ Wrapper around the qtl caller for pipelining
 """
 
 import gzip
-import galp
 import pandas as pd
+import galp
+from galp import step
 
 from . import qtl
-
-pbl = galp.Block()
-
 
 DEFAULT_QTL_TOOL_CONFIG = {
     'n_bins': 100,
@@ -17,7 +15,7 @@ DEFAULT_QTL_TOOL_CONFIG = {
     'qtl_core_config': None
     }
 
-@pbl.step
+@step
 def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
         gx_covariates_file, qtl_tool_config=None):
     """
@@ -56,9 +54,9 @@ def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
             qtl_tool_config)
         for window in windows])
 
-@pbl.step
+@step
 def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
-        gx_covariates_file, window, qtl_tool_config, _galp):
+        gx_covariates_file, window, qtl_tool_config):
     """
     Run the qtl caller on one chunk, and write down the results to disk
     """
@@ -78,7 +76,7 @@ def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
             )
 
     # pairs can be huge, so write it back and compress it
-    pairs_path = _galp.new_path()
+    pairs_path = galp.new_path()
     pairs.to_feather(pairs_path)
 
     # Gene level summaries are much lighter, so can use default handling
@@ -88,14 +86,14 @@ def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
         'egenes_ic': summary_ic
         }
 
-@pbl.step
-def merge_qtl(bins, _galp):
+@step
+def merge_qtl(bins):
     """
     Concatenate results of all given bins
     """
 
 #    FIXME: this is slow and temp-disabled for developping
-#    pairs_path = _galp.new_path()
+#    pairs_path = galp.new_path()
 #    with gzip.open(pairs_path, 'wt', encoding='utf8') as stream:
 #        pd.read_feather(bins[0]['all_pairs_path']).to_csv(
 #                stream, sep='\t', header=True
@@ -108,7 +106,7 @@ def merge_qtl(bins, _galp):
 
     egenes_paths = {}
     for key in ('egenes_perm', 'egenes_ic'):
-        path = _galp.new_path()
+        path = galp.new_path()
         pd.concat([b[key] for b in bins], axis=0).to_csv(
                 path, sep='\t', compression='gzip'
                 )

@@ -12,14 +12,13 @@ import datashader.transfer_functions as tf
 import plotly.graph_objects as go
 
 import galp
-
-pbl = galp.Block()
+from galp import step
 
 ALL_PAIRS = 'fastqtl_workflow.fastqtl_nominal.allpairs'
 EGENES = 'fastqtl_workflow.fastqtl_postprocess.genes_annotated'
 SIGNIF_PAIRS = 'fastqtl_workflow.fastqtl_postprocess.signifpairs'
 
-@pbl.step
+@step
 def all_pvals(results):
     """
     Extract all nominal p-values as an array
@@ -34,7 +33,7 @@ def all_pvals(results):
         .to_numpy()
     )
 
-@pbl.step
+@step
 def histogram(values, log=False, nbins=1000):
     """
     Pre-compute an histogram.
@@ -58,7 +57,7 @@ def histogram(values, log=False, nbins=1000):
         'log': log
         }
 
-@pbl.step
+@step
 def quantiles(values, num=1000):
     """
     Precompute quantiles
@@ -96,7 +95,7 @@ def plot_histogram(hist):
                 }
             )
 
-@pbl.step(vtag='0.4: trend')
+@step(vtag='0.4: trend')
 def datashader_scatter(x, y, log=False):
     """
     Quick datashader scatter plot of two arrays.
@@ -195,7 +194,7 @@ def plot_ds_scatter(ds_image_trend):
 
     return fig
 
-@pbl.step(vtag='0.2 pairs')
+@step(vtag='0.2 pairs')
 def count_egenes(results):
     """
     Count genes with global qval <= 0.05, and significant eqtls.
@@ -214,7 +213,7 @@ def count_egenes(results):
             )
         )
 
-@pbl.step
+@step
 def all_egenes(egenes, all_qtls):
     """
     Extract gene summaries computed by permutation

@@ -2,7 +2,7 @@
 Reference PEER correction
 """
 
-import wdl_galp
+import galp.wdl
 
 from .utils import broad_wdl
 
@@ -17,7 +17,7 @@ def peer_and_combine(expression_file, gpcs_covariates, additional_covariates):
     Returns:
         path to combined covariates file
     """
-    combined_covariates = wdl_galp.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
+    combined_covariates = galp.wdl.run(broad_wdl('qtl/eqtl_peer_factors.wdl'),
             ** { f'eqtl_peer_factors.{key}': value
                 for key, value in {
                     'expression_file': expression_file,

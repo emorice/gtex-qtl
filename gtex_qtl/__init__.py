@@ -19,7 +19,6 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import galp
-import wdl_galp
 
 from . import (
         downloads,
@@ -37,7 +36,7 @@ from . import (
 # 0.1) Extract additional (non-PEER) covariates and genotyped subject list
 # ========================================================================
 
-additional_covariates, genotyped_subject_ids = preprocess.additional_covariates()
+additional_covariates, genotyped_subject_ids = preprocess.get_additional_covariates()
 
 # 0.2) Download public expression files and gene model
 # ====================================================
@@ -71,7 +70,7 @@ combined_covariates_file = peer.peer_and_combine(
 # ============================================
 
 run_fastqtl = functools.partial(fastqtl.run_fastqtl,
-        indexed_vcf=preprocess.filtered_indexed_vcf,
+        indexed_vcf=preprocess.filter_index_vcf(),
         gene_model=public_input_files['gene_model'],
         )
 
@@ -81,7 +80,7 @@ reference_fastqtl = run_fastqtl(
         )
 
 run_qtl = functools.partial(qtl_tool.call_qtl,
-        genotype_vcf=preprocess.indexed_vcf[0],
+        genotype_vcf=preprocess.index_vcf()[0],
         qtl_tool_config={
             'bed_fixed_fields': 4,
             'qtl_core_config': {
@@ -100,11 +99,11 @@ reference_qtl = run_qtl(
 # 5) Get published results and compare
 # ====================================
 
-plots.pbl.bind(published_tissue_egenes=downloads.published_tissue_egenes())
+#plots.pbl.bind(published_tissue_egenes=downloads.published_tissue_egenes())
 
-plots.pbl.bind(computed_tissue_egenes=
-        reference_fastqtl['fastqtl_workflow.fastqtl_permutations_merge.genes']
-        )
+#plots.pbl.bind(computed_tissue_egenes=
+#        reference_fastqtl['fastqtl_workflow.fastqtl_permutations_merge.genes']
+#        )
 
 # Models and plots below this point are undergoing rewriting
 
@@ -168,7 +167,7 @@ all_qtl = {
         }
 
 all_egenes_perm = compare.all_egenes({
-    'published': downloads.published_tissue_egenes(),
+    'published': downloads.get_published_tissue_egenes('Whole_Blood'),
     'reproduction': all_qtl['reproduction'][compare.EGENES],
     'reimplementation (perm)': all_qtl['reimplementation']['egenes_perm'],
     'reimplementation (interchrom)': all_qtl['reimplementation']['egenes_ic'],
@@ -186,16 +185,20 @@ all_egenes_ic = compare.all_egenes({
 Gene-level summaries for all inter-chrom runs
 """
 
-plots.pbl.bind(all_egenes=all_egenes_ic)
+#plots.pbl.bind(all_egenes=all_egenes_ic)
 
 all_pval_hist_ic = {
         ppl: compare.all_pairs_adjusted_hist(qtl)
         for ppl, qtl in qtls_ic.items()
         }
 
-plots.pbl.bind(all_pairs_pvals=all_pval_hist_ic)
+#plots.pbl.bind(all_pairs_pvals=all_pval_hist_ic)
 
 # END
 # ===
 
-default_target = all_egenes_perm
+def default_target():
+    """
+    Galp command line interface
+    """
+    return all_egenes_perm

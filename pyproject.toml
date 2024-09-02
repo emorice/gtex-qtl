@@ -6,8 +6,7 @@ dependencies = [
     "pyarrow",
     "plotly",
     "datashader",
-    "galp @ git+ssh://git@github.com/emorice/galp.git",
-    "wdl_galp @ git+ssh://git@github.com/emorice/wdl-galp.git",
+    "galp[wdl] @ git+ssh://git@github.com/emorice/galp.git",
     "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git",
     "gemz_galp @ git+ssh://git@github.com/emorice/gemz-galp.git",
     ]

@@ -61,9 +61,12 @@ In :mod:`gtex_qtl.preprocess` utils to filter out the extra columns are provided
 """
 
 @step
-def untar(path):
+def untar(path: str) -> str:
     """
-    Extract tar archive
+    Extract tar archive with shutil
+
+    Returns:
+        path to extracted directory
     """
     dst_path = galp.new_path()
     os.makedirs(dst_path, exist_ok=True)
@@ -100,16 +103,12 @@ def expression_shape(expression_file):
         'num_samples': sum(col.startswith('GTEX-') for col in expr_df)
         }
 
-#pbl.bind(reference_results=untar(urlretrieve(_GTEX_BASE_URL +
-#        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
-#    )))
-
 reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
         'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
         ))
 
 @step
-def published_tissue_egenes(reference_results, ref_tissue_name):
+def _published_tissue_egenes(reference_results: str, ref_tissue_name: str) -> str:
     """
     Path to specific tissue results
     """
@@ -117,3 +116,12 @@ def published_tissue_egenes(reference_results, ref_tissue_name):
         'GTEx_Analysis_v8_eQTL',
         f'{ref_tissue_name}.v8.egenes.txt.gz'
         )
+
+def get_published_tissue_egenes(tissue_name: str) -> str:
+    """
+    Download the published results for given tissue
+    """
+    reference_results = untar(urlretrieve(_GTEX_BASE_URL +
+        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
+        ))
+    return _published_tissue_egenes(reference_results, tissue_name)

@@ -2,7 +2,7 @@
 Reference FastQTL analysis
 """
 
-import wdl_galp
+import galp.wdl
 
 from .utils import local_wdl
 
@@ -15,7 +15,7 @@ def run_fastqtl(expression_files, indexed_vcf, gene_model, covariates_file=None)
         indexed_vcf: tuple with path to vcf and path to index
         gene_model: path to gene model file
     """
-    return wdl_galp.run(local_wdl('fastqtl.wdl'),
+    return galp.wdl.run(local_wdl('fastqtl.wdl'),
         expression_bed=expression_files[0],
         expression_bed_index=expression_files[1],
         vcf=indexed_vcf[0], vcf_index=indexed_vcf[1],

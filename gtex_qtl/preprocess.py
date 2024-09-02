@@ -22,13 +22,12 @@ from galp import step
 
 from .utils import broad_wdl
 
-#pbl.bind(subject_phenotypes_path=local_settings.GTEX_SUBJECT_PHENOTYPES_FILE)
-#pbl.bind(sample_attributes_path=local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE)
 
-@step(vtag='0.5: naming', items=2)
-def additional_covariates(subject_phenotypes_path, sample_attributes_path):
+@step(items=2)
+def _additional_covariates(subject_phenotypes_path: str,
+        sample_attributes_path: str) -> tuple[str, list[str]]:
     """
-    Generate a covariate file with extra covariates.
+    Generate a TSV covariate file with extra covariates.
 
     Also returns the list of the available subject IDs. Availability mostly
     means that a WGS sample was found in the metadata files for a given subject.
@@ -46,6 +45,18 @@ def additional_covariates(subject_phenotypes_path, sample_attributes_path):
             index=False
         )
     return dst_path, list(cov_df.columns[1:])
+
+def get_additional_covariates() -> tuple[str, list[str]]:
+    """
+    Get covariates from files in `local_settings`
+
+    Returns:
+        (path to covariates, list of subject ids)
+    """
+    return _additional_covariates(
+        local_settings.GTEX_SUBJECT_PHENOTYPES_FILE,
+        local_settings.GTEX_SAMPLE_ATTRIBUTES_FILE,
+        )
 
 @step
 def gct_filter_columns(src_path, genotyped_subs):
@@ -75,12 +86,12 @@ def gct_filter_columns(src_path, genotyped_subs):
                     )
     return dst_path
 
-def extract_covariates(subject_path, sample_path):
+def extract_covariates(subject_path: str, sample_path: str) -> pd.DataFrame:
     """
     Extract sex, WGS sequencing protocol and platform
 
     Returns:
-        dataframe with columns SUBJID, SEX,
+        dataframe with columns ID, SEX, WGS_PCR, WGS_HISEQX
     """
     # Get subject id and sex
     subject_df = pd.read_table(subject_path, usecols=['SUBJID', 'SEX']).set_index('SUBJID')
@@ -142,7 +153,7 @@ def extract_covariates(subject_path, sample_path):
     return cov_df
 
 @step
-def expression_sample_ids(counts):
+def expression_sample_ids(counts: str) -> list[str]:
     """
     List sample IDs from expression file
     """
@@ -164,7 +175,7 @@ def expression_sample_ids(counts):
         return gtex_ids
 
 @step
-def sample_participant_lookup(expression_sample_ids):
+def sample_participant_lookup(expression_sample_ids: list[str]) -> str:
     """
     Generate a lookup file matching samples to participants from a list of
     samples by simply interpreting the first two dash-separated components as
@@ -179,10 +190,13 @@ def sample_participant_lookup(expression_sample_ids):
             print(f'{sample_id}\t{participant_id}', file=stream)
     return path
 
-@step(vtag='0.2 extension')
-def tabix(src_path):
+@step(items=2)
+def tabix(src_path: str) -> tuple[str, str]:
     """
     Compress and index file with tabix
+
+    Returns:
+        (vcf path, index path)
     """
     dst_path = galp.new_path()
 
@@ -201,12 +215,13 @@ def tabix(src_path):
 
     return dst_path, index_path
 
-@step(vtag='0.2: both paths')
-def indexed_vcf(_galp):
+@step
+def index_vcf() -> tuple[str, str]:
     """
     Symlink then index with tabix the vcf given in local_settings
 
-    TODO: delete and replace with `tabix` step
+    Returns:
+        (vcf path, index path)
     """
     path = galp.new_path()
     os.symlink(
@@ -221,11 +236,14 @@ def indexed_vcf(_galp):
 
     return path, index_path
 
-@step
-def filtered_indexed_vcf(_galp, maf=0.01):
+@step(items=2)
+def filter_index_vcf(maf=0.01) -> tuple[str, str]:
     """
     Filter out variants with less than `maf` maf, then recompress and index the
-    result
+    result with tabix. Path to vcf is found in local_settings.
+
+    Returns:
+        (vcf path, index path)
     """
     dst_path = galp.new_path() + '.vcf.gz'
 
@@ -275,14 +293,16 @@ def prepare_expression(wb_tpm, wb_counts, gene_model):
         tuple: **expression_file** (path to the prepared expression) and
             **expression_file_index** (path to the matching index file)
     """
-    prepared_expression = wdl_galp.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
+    prepared_expression = galp.wdl.run(broad_wdl('qtl/eqtl_prepare_expression.wdl'),
             **{ f'eqtl_prepare_expression.{key}': value
                 for key, value in {
                     'tpm_gct': wb_tpm,
                     'counts_gct': wb_counts,
                     'annotation_gtf': gene_model,
                     'sample_participant_ids':
-                        sample_participant_lookup(counts=wb_counts),
+                        sample_participant_lookup(
+                            expression_sample_ids(wb_counts)
+                            ),
                     'vcf_chr_list': chr_list,
                     'prefix': PREFIX,
                     # Runtime section (not really used)

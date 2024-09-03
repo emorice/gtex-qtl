@@ -6,7 +6,9 @@ dependencies = [
     "pyarrow",
     "plotly",
     "datashader",
+    "dask-expr", # silence datashader warning
     "galp[wdl] @ git+ssh://git@github.com/emorice/galp.git",
+    "aiohttp", # http galp interface
     "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git",
     "gemz_galp @ git+ssh://git@github.com/emorice/gemz-galp.git",
     ]

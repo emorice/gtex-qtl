@@ -19,6 +19,8 @@ def urlretrieve(url, preserve_suffix=True, gunzip=False):
     Download file from url and check it in the store
     """
 
+    print('Downloading', url, flush=True)
+
     if preserve_suffix:
         # Try to preserve the file extension as a dowstream step may rely on it
         # for file typing
@@ -37,18 +39,15 @@ def urlretrieve(url, preserve_suffix=True, gunzip=False):
         shutil.copyfileobj(in_fd, out_fd)
     return to_path
 
-_GTEX_BASE_URL = 'https://storage.googleapis.com/gtex_analysis_v8/'
-_GTEX_GENE_MODEL_URL = (
-    'https://personal.broadinstitute.org/francois/topmed/'
-    'gencode.v26.GRCh38.ERCC.genes.gtf.gz'
-    )
+_GTEX_BASE_URL = 'https://storage.googleapis.com/adult-gtex/'
 
 input_files = {
         'wb_tpm': urlretrieve(_GTEX_BASE_URL +
-            'rna_seq_data/gene_tpm/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'),
+            'bulk-gex/v8/rna-seq/counts-by-tissue/gene_reads_2017-06-05_v8_whole_blood.gct.gz'),
         'wb_counts': urlretrieve(_GTEX_BASE_URL +
-            'rna_seq_data/gene_reads/gene_reads_2017-06-05_v8_whole_blood.gct.gz'),
-        'gene_model': urlretrieve(_GTEX_GENE_MODEL_URL, gunzip=True)
+            'bulk-gex/v8/rna-seq/tpms-by-tissue/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'),
+        'gene_model': urlretrieve(_GTEX_BASE_URL +
+            'references/v8/reference-tables/gencode.v26.GRCh38.genes.gtf'),
         }
 """
 Publicly available files needed as inputs of the pipeline.
@@ -74,7 +73,8 @@ def untar(path: str) -> str:
     return dst_path
 
 #pbl.bind(reference_expression=untar(urlretrieve(_GTEX_BASE_URL +
-#        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
+#        #'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
+#        'bulk-qtl/v8/single-tissue-cis-qtl/GTEx_Analysis_v8_eQTL_expression_matrices.tar'
 #        )))
 
 #pbl.bind(ref_tissue_name='Whole_Blood')
@@ -104,7 +104,7 @@ def expression_shape(expression_file):
         }
 
 reference_covariates = untar(urlretrieve(_GTEX_BASE_URL +
-        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
+        'bulk-qtl/v8/single-tissue-cis-qtl/GTEx_Analysis_v8_eQTL_covariates.tar.gz'
         ))
 
 @step
@@ -122,6 +122,6 @@ def get_published_tissue_egenes(tissue_name: str) -> str:
     Download the published results for given tissue
     """
     reference_results = untar(urlretrieve(_GTEX_BASE_URL +
-        'single_tissue_qtl_data/GTEx_Analysis_v8_eQTL.tar'
+        'bulk-qtl/v8/single-tissue-cis-qtl/GTEx_Analysis_v8_eQTL.tar'
         ))
     return _published_tissue_egenes(reference_results, tissue_name)

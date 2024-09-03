@@ -52,10 +52,13 @@ for input_file in 'wb_tpm', 'wb_counts':
 # 1) Prepare expression (filter and normalize)
 # ============================================
 
+filtered_indexed_vcf = preprocess.filter_index_vcf()
+
 prepared_expression = preprocess.prepare_expression(
         public_input_files['wb_tpm'],
         public_input_files['wb_counts'],
-        public_input_files['gene_model']
+        public_input_files['gene_model'],
+        filtered_indexed_vcf
         )
 
 # 2) PEER factors and 3) combine covariates
@@ -70,7 +73,7 @@ combined_covariates_file = peer.peer_and_combine(
 # ============================================
 
 run_fastqtl = functools.partial(fastqtl.run_fastqtl,
-        indexed_vcf=preprocess.filter_index_vcf(),
+        indexed_vcf=filtered_indexed_vcf,
         gene_model=public_input_files['gene_model'],
         )
 

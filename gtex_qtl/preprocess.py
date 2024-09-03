@@ -59,10 +59,13 @@ def get_additional_covariates() -> tuple[str, list[str]]:
         )
 
 @step
-def gct_filter_columns(src_path, genotyped_subs):
+def gct_filter_columns(src_path: str, genotyped_subject_ids: list[str]) -> str:
     """
     Drop the extra "id" column present in the public expression files, and
     subset samples with available genotype information.
+
+    Returns:
+        path to new file
     """
     dst_path = galp.new_path() + '.gct.gz'
     with gzip.open(src_path, 'rt', encoding='ascii') as src:
@@ -266,7 +269,7 @@ def filter_index_vcf(maf=0.01) -> tuple[str, str]:
     return dst_path, dst_path + '.tbi'
 
 @step
-def chr_list(filtered_indexed_vcf):
+def chr_list(filtered_indexed_vcf: tuple[str, str]) -> str:
     """
     File with the chromosome list from indexed vcf
     """
@@ -277,7 +280,8 @@ def chr_list(filtered_indexed_vcf):
 
 PREFIX='wb' # not really used but must be set to some string
 
-def prepare_expression(wb_tpm, wb_counts, gene_model):
+def prepare_expression(wb_tpm: str, wb_counts: str, gene_model: str,
+        filtered_indexed_vcf: tuple[str, str]) -> tuple[str, str]:
     """
     Pipeline meta-step to run the expression preparation step of the reference pipeline.
 
@@ -288,6 +292,8 @@ def prepare_expression(wb_tpm, wb_counts, gene_model):
         wb_tpm: path to the raw expression (in TPMs)
         wb_counts: path to the raw expression (in read counts)
         gene_model: path to the gene model file of the reference pipeline.
+        filtered_indexed_vcf: tuple of paths to vcf file and index, used to
+            filter chromosomes
 
     Returns:
         tuple: **expression_file** (path to the prepared expression) and
@@ -303,7 +309,7 @@ def prepare_expression(wb_tpm, wb_counts, gene_model):
                         sample_participant_lookup(
                             expression_sample_ids(wb_counts)
                             ),
-                    'vcf_chr_list': chr_list,
+                    'vcf_chr_list': chr_list(filtered_indexed_vcf),
                     'prefix': PREFIX,
                     # Runtime section (not really used)
                     'memory': 0,

@@ -239,7 +239,7 @@ def index_vcf() -> tuple[str, str]:
 
     return path, index_path
 
-@step(items=2)
+@step(items=2, vtag='0.2 extra check')
 def filter_index_vcf(maf=0.01) -> tuple[str, str]:
     """
     Filter out variants with less than `maf` maf, then recompress and index the
@@ -263,6 +263,13 @@ def filter_index_vcf(maf=0.01) -> tuple[str, str]:
         vcf_p.stdout.close()
         if vcf_p.wait() or bgz_p.wait():
             raise RuntimeError('Vcf filtering failed')
+
+    # Unfortunately, vcftools can produce "silent" errors (exit status stays 0)
+    # even if it fails. As an additional check, ensure that the output contains
+    # non-trivial data. Even an empty BGZ file contains some header, so check
+    # for a bit more than that.
+    if os.stat(dst_path).st_size < 100:
+        raise RuntimeError('Filtered vcf is smaller than 100 bytes, assuming something went wrong')
 
     subprocess.run(['tabix', dst_path], check=True)
 

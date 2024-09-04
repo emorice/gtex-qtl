@@ -6,21 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-template = go.layout.Template(layout={
-    # For slides
-    'width': 600, 'height': 400,
-    # For display
-    'autosize': False,
-    # 'width': 2100, 'height': 800,
-    'yaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power',
-        'title': {'standoff': 100}},
-    'xaxis': {'showline': True, 'ticks': 'outside', 'exponentformat': 'power'}
-}, data={
-    'scatter': [{
-        'line': {'width': 1}
-        }]
-    }
-)
+from gtex_qtl import template
 
 _EXCLUDES = {'linear'}
 
@@ -106,8 +92,8 @@ def egenes_pval_cdf(all_egenes: dict[str, pd.DataFrame]) -> go.Figure:
             key=lambda p: p[1]['pval_beta'].median())
         if pipeline != 'linear'
         ], {
-            'title': 'CDF of gene-level adjusted p-values of best association, '
-                'across all expressed genes',
+            #'title': 'CDF of gene-level adjusted p-values of best association, '
+            # 'across all expressed genes',
             'xaxis': {
                 'title': 'Multiple-comparison adjusted p-value of best '
                     'association',
@@ -119,7 +105,6 @@ def egenes_pval_cdf(all_egenes: dict[str, pd.DataFrame]) -> go.Figure:
                 'exponentformat': 'none',
                 'rangemode': 'tozero',
                 },
-            'template': template
             }
         )
 
@@ -152,6 +137,5 @@ def pairs_pval_cdf(all_pairs_pvals):
                 'exponentformat': 'SI',
                 'rangemode': 'tozero',
                 },
-            'template': template
             }
         )

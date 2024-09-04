@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from galp import view
-
 template = go.layout.Template(layout={
     # For slides
     'width': 600, 'height': 400,
@@ -37,7 +35,6 @@ _EXCLUDES = {'linear'}
         #'pval_beta'
 #        )
 
-@view
 def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
     cmp_variable='qval'):
     """
@@ -94,8 +91,7 @@ def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
             }
         )
 
-@view
-def egenes_pval_cdf(all_egenes):
+def egenes_pval_cdf(all_egenes: dict[str, pd.DataFrame]) -> go.Figure:
     """
     CDF of adjusted p-values
     """
@@ -127,7 +123,6 @@ def egenes_pval_cdf(all_egenes):
             }
         )
 
-@view
 def pairs_pval_cdf(all_pairs_pvals):
     """
     Quantiles of adjusted p-values of all associations

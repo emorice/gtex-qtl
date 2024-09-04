@@ -43,9 +43,9 @@ _GTEX_BASE_URL = 'https://storage.googleapis.com/adult-gtex/'
 
 input_files = {
         'wb_tpm': urlretrieve(_GTEX_BASE_URL +
-            'bulk-gex/v8/rna-seq/counts-by-tissue/gene_reads_2017-06-05_v8_whole_blood.gct.gz'),
-        'wb_counts': urlretrieve(_GTEX_BASE_URL +
             'bulk-gex/v8/rna-seq/tpms-by-tissue/gene_tpm_2017-06-05_v8_whole_blood.gct.gz'),
+        'wb_counts': urlretrieve(_GTEX_BASE_URL +
+            'bulk-gex/v8/rna-seq/counts-by-tissue/gene_reads_2017-06-05_v8_whole_blood.gct.gz'),
         'gene_model': urlretrieve(_GTEX_BASE_URL +
             'references/v8/reference-tables/gencode.v26.GRCh38.genes.gtf'),
         }

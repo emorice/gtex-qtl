@@ -204,4 +204,4 @@ def default_target():
     """
     Galp command line interface
     """
-    return all_egenes_perm
+    return all_egenes_perm, all_egenes_ic

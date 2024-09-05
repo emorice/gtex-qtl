@@ -23,7 +23,7 @@ plotly.io.templates.default = go.layout.Template(layout={
     'height': topx(PT_WIDTH * 0.75),
     'autosize': False,
     'font_family': 'Palatino',
-    'margin': {'r': 0, 'b': 45, 't': 0},
+    'margin': {'r': 0, 'b': 50, 't': 0},
     ** {
         f'{a}axis': {
             'showline': True,

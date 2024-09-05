@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 import galp
+import gtex_qtl
 from gtex_qtl import template
 
 _EXCLUDES = {'linear'}
@@ -155,7 +156,7 @@ def vs_egenes(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
     })
 
     # This needs to be tuned somewhat manually for best effect
-    xmin, xmax = 2700, 5800
+    xmin, xmax = egenes['peer'].iloc[0] - 800, egenes['cmk'].iloc[-1] + 400
 
     return go.Figure([
         go.Scatter({
@@ -185,11 +186,7 @@ def export_all_plots(store: str, output: str) -> None:
     """
     os.makedirs(output, exist_ok=True)
 
-    # Test artifact, to be replaced
-    all_egenes_ic_test_name =  bytes.fromhex(
-            '4e304d0bb307db2c7562d73171047582bfb20036f937ef3862effd04a2291283')
-    all_egenes_ic = galp.run(galp.task_types.TaskRef(all_egenes_ic_test_name),
-                                                     store=store)
+    all_egenes_ic = galp.run(gtex_qtl.all_egenes_ic, store=store)
 
     vs_egenes(all_egenes_ic).write_image(
             os.path.join(output, 'egenes_peer_cmk.svg')

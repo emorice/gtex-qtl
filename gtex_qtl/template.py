@@ -50,7 +50,8 @@ plotly.io.templates.default = go.layout.Template(layout={
                 'symbol': 'cross-thin',
                 'line.width': 2*PX_RULE,
                 'line.color': plotly.colors.DEFAULT_PLOTLY_COLORS[i]
-                }
+                },
+            'textfont': {'size': PX_FOOTNOTE},
         } for i in range(10)],
         'scattergl': [{
             'line': {'width': 3*PX_RULE},

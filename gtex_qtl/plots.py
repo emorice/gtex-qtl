@@ -2,10 +2,13 @@
 Collection of pipeline plots
 """
 
+import os
+import argparse
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+import galp
 from gtex_qtl import template
 
 _EXCLUDES = {'linear'}
@@ -139,3 +142,64 @@ def pairs_pval_cdf(all_pairs_pvals):
                 },
             }
         )
+
+def vs_egenes(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Plot number of eGenes
+    """
+    minexp = -5
+    egenes = pd.DataFrame({
+        name: [np.sum(all_egenes_ic[ppl]['pval_beta'] < 10**k) for k in
+               range(minexp, 0)]
+        for name, ppl in {'peer': 'reimplementation', 'cmk': 'cmk'}.items()
+    })
+
+    # This needs to be tuned somewhat manually for best effect
+    xmin, xmax = 2700, 5800
+
+    return go.Figure([
+        go.Scatter({
+            'x': egenes['peer'],
+            'y': egenes['cmk'],
+            'text': [10**k for k in range(minexp, 0)],
+            'mode': 'lines+markers+text',
+            'textposition': 'top left',
+            'texttemplate': 'p < %{text:.0e}',
+            'showlegend': False,
+        }),
+        go.Scatter({
+            'x': [xmin, xmax],
+            'y': [xmin, xmax],
+            'mode': 'lines',
+            'line': {'color': 'black', 'width': template.PX_RULE},
+            'showlegend': False,
+        })
+    ], {
+        'xaxis': {'range': [xmin, xmax], 'title': 'Genes with significant eQTL (PEER)'},
+        'yaxis': {'range': [xmin, xmax], 'title': 'Genes with significant eQTL (CMK)'}
+    })
+
+def export_all_plots(store: str, output: str) -> None:
+    """
+    Run all the graph generating code and create svg files
+    """
+    os.makedirs(output, exist_ok=True)
+
+    # Test artifact, to be replaced
+    all_egenes_ic_test_name =  bytes.fromhex(
+            '4e304d0bb307db2c7562d73171047582bfb20036f937ef3862effd04a2291283')
+    all_egenes_ic = galp.run(galp.task_types.TaskRef(all_egenes_ic_test_name),
+                                                     store=store)
+
+    vs_egenes(all_egenes_ic).write_image(
+            os.path.join(output, 'egenes_peer_cmk.svg')
+            )
+
+def main():
+    """Entry point"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument('store', help='Task result store')
+    parser.add_argument('output', help='Task result store')
+    args = parser.parse_args()
+
+    export_all_plots(args.store, args.output)

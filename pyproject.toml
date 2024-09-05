@@ -5,6 +5,7 @@ dependencies = [
     "pandas",
     "pyarrow",
     "plotly",
+    "kaleido",
     "datashader",
     "dask-expr", # silence datashader warning
     "galp[wdl] @ git+ssh://git@github.com/emorice/galp.git",
@@ -21,3 +22,6 @@ dev = [
   "pynvim",
   "jedi"
 ]
+
+[project.scripts]
+gtex-qtl-plots = "gtex_qtl.plots:main"

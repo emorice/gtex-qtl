@@ -162,10 +162,9 @@ def vs_egenes(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
         go.Scatter({
             'x': egenes['peer'],
             'y': egenes['cmk'],
-            'text': [10**k for k in range(minexp, 0)],
+            'text': [f'p < 10<sup>{k}</sup>' for k in range(minexp, 0)],
             'mode': 'lines+markers+text',
             'textposition': 'top left',
-            'texttemplate': 'p < %{text:.0e}',
             'showlegend': False,
         }),
         go.Scatter({

@@ -14,17 +14,6 @@ from gtex_qtl import template
 
 _EXCLUDES = {'linear'}
 
-#pbl.bind(cmp_variable=
-#        'qval'
-        #'num_var'
-        #'maf'
-        #'pval_nominal'
-        #'beta_shape1'
-        #'beta_shape2'
-        #'true_df'
-        #'pval_beta'
-#        )
-
 def qvalues_cmp(published_tissue_egenes, computed_tissue_egenes,
     cmp_variable='qval'):
     """
@@ -144,6 +133,15 @@ def pairs_pval_cdf(all_pairs_pvals):
             }
         )
 
+def vs_egenes_interchrom(all_egenes_perm: dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Plot number of eGenes
+    """
+    return vs_egenes(all_egenes_perm, (
+        ('reimplementation (perm)', 'Permutation'),
+        ('reimplementation (interchrom)', 'Inter-chrom.')
+        ))
+
 def vs_egenes_published_repro(all_egenes_perm: dict[str, pd.DataFrame]) -> go.Figure:
     """
     Plot number of eGenes
@@ -152,6 +150,7 @@ def vs_egenes_published_repro(all_egenes_perm: dict[str, pd.DataFrame]) -> go.Fi
         ('published', 'Published'),
         ('reproduction', 'Reproduction')
         ))
+
 def vs_egenes_peer_cmk(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
     """
     Plot number of eGenes
@@ -173,7 +172,16 @@ def vs_egenes(all_egenes: dict[str, pd.DataFrame], alts) -> go.Figure:
     })
 
     # This needs to be tuned somewhat manually for best effect
-    xmin, xmax = egenes[alts[0][0]].iloc[0] - 800, egenes[alts[1][0]].iloc[-1] + 400
+    larger = egenes[alts[1][0]].iloc[0] >= egenes[alts[0][0]].iloc[0]
+
+    xmin, xmax = egenes[alts[0][0]].iloc[0], egenes[alts[1][0]].iloc[-1]
+    if larger:
+        xmin -= 800
+        xmax += 400
+    else:
+        xmin -= 800
+        xmax += 1400
+
 
     return go.Figure([
         go.Scatter({
@@ -181,7 +189,7 @@ def vs_egenes(all_egenes: dict[str, pd.DataFrame], alts) -> go.Figure:
             'y': egenes[alts[1][0]],
             'text': [f'p < 10<sup>{k}</sup>' for k in range(minexp, 0)],
             'mode': 'lines+markers+text',
-            'textposition': 'top left',
+            'textposition': 'top left' if larger else 'bottom right',
             'showlegend': False,
         }),
         go.Scatter({
@@ -215,6 +223,10 @@ def export_all_plots(store: str, output: str) -> None:
 
     vs_egenes_published_repro(all_egenes_perm).write_image(
             os.path.join(output, 'egenes_pub_repro.svg')
+            )
+
+    vs_egenes_interchrom(all_egenes_perm).write_image(
+            os.path.join(output, 'egenes_interchrom.svg')
             )
 
 def main():

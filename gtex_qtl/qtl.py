@@ -499,7 +499,7 @@ def _call_null_any(genotype, expression_item, null_expression, best_pair):
             **{ k + '_jmle': v for k, v in
                 stats.pval_max_scaled_t(best_pair.slope_st2, jmle_params).items()},
             # Revision
-            **{ k + '_rev2': v for k, v in jmle_params.items()},
+            **{ k + '_rev2': v for k, v in jmle_params_rev2.items()},
             **{ k + '_jmle_rev2': v for k, v in
                 stats.pval_max_scaled_t(best_pair.slope_st2, jmle_params_rev2).items()},
             # Raw data and permutation based

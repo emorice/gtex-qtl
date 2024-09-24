@@ -15,7 +15,7 @@ DEFAULT_QTL_TOOL_CONFIG = {
     'qtl_core_config': None
     }
 
-@step(vtag='0.3 fix dofs mle')
+@step(vtag='0.4 fix fix dofs mle')
 def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
         gx_covariates_file, qtl_tool_config=None):
     """
@@ -54,7 +54,7 @@ def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
             qtl_tool_config)
         for window in windows])
 
-@step(vtag='0.2 fix dofs mle')
+@step(vtag='0.3 fix fix dofs mle')
 def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
         gx_covariates_file, window, qtl_tool_config):
     """

@@ -483,6 +483,8 @@ def _call_null_any(genotype, expression_item, null_expression, best_pair):
 
     ## Estimate both meaningful parameters jointly
     jmle_params = stats.fit_max_scaled_t(_best_null_st2s)
+    # Same with correct formula
+    jmle_params_rev2 = stats.fit_max_scaled_t(_best_null_st2s, revision=2)
 
     ## Estimate parameters in turn with fqtl procedure
     fqtl_params = stats.fqtl_fit_max_scaled_t(_best_null_st2s)
@@ -496,7 +498,11 @@ def _call_null_any(genotype, expression_item, null_expression, best_pair):
             **jmle_params,
             **{ k + '_jmle': v for k, v in
                 stats.pval_max_scaled_t(best_pair.slope_st2, jmle_params).items()},
-            #
+            # Revision
+            **{ k + '_rev2': v for k, v in jmle_params.items()},
+            **{ k + '_jmle_rev2': v for k, v in
+                stats.pval_max_scaled_t(best_pair.slope_st2, jmle_params_rev2).items()},
+            # Raw data and permutation based
             **{k: best_pair[k]
                 for k in ('pval_nominal', 'slope', 'slope_se')
                 },

@@ -174,14 +174,30 @@ def mle_log_rep_max(sfs):
 
 def _maxed_scaled_t_ll(st2s, dofs):
     """
-    Log-likelihood of the max of several scaled-t observations
+    Probably incorrect log-likelihood of the max of several scaled-t observations
     """
     return (
         np.sum(st_log_pdf(st2s, dofs))
         + len(st2s) * mle_log_rep_max(st_sf(st2s, dofs))
     )
 
-def fit_max_scaled_t(best_scaled_t2s):
+def _maxed_scaled_t_ll_r2(st2s, dofs):
+    """
+    Log-likelihood of the max of several scaled-t observations, including a fix
+    of the formula.
+    """
+    # Survival functions
+    st_sfs = st_sf(st2s, dofs)
+
+    st_log_cdfs = scipy.special.log1p(-st_sfs)
+
+    return (
+        np.sum(st_log_pdf(st2s, dofs))
+        - np.sum(st_log_cdfs)
+        + len(st2s) * mle_log_rep_max(st_sfs)
+    )
+
+def fit_max_scaled_t(best_scaled_t2s, revision: int=1):
     """
     Fit max-of-many scaled-t distribution
 
@@ -192,8 +208,15 @@ def fit_max_scaled_t(best_scaled_t2s):
         dict with `dofs` the mle of the number of degrees of freedom, and `reps`
         the mle of the number of observations maxed over.
     """
+    if revision == 1:
+        ll_fun = _maxed_scaled_t_ll
+    elif revision == 2:
+        ll_fun = _maxed_scaled_t_ll_r2
+    else:
+        raise ValueError(f'Bad revision: {revision!r}')
+
     opt = scipy.optimize.minimize_scalar(
-            lambda dofs: -_maxed_scaled_t_ll(best_scaled_t2s, dofs),
+            lambda dofs: -ll_fun(best_scaled_t2s, dofs),
             (0.1, 0.2))
     _log_convergence(opt, 'Max-Scaled-T distribution fit')
     mle_dofs = opt.x

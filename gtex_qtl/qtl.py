@@ -165,9 +165,10 @@ DEFAULT_QTL_CONFIG: QtlConfigDict = {
 Default options for :func:`call_qtls`
 """
 
-def call_qtls(expression_df, gene_window_indexes, vcf_path,
-        gt_covariates_df, gx_covariates_df,
-        vcf_index=None, qtl_config: QtlConfigDict | None = None):
+def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
+        tuple[int, int], vcf_path: str, gt_covariates_df: pd.DataFrame,
+        gx_covariates_df: pd.DataFrame | None, vcf_index=None,
+        qtl_config: QtlConfigDict | None = None):
     """
     Draft QTL calling.
 
@@ -260,17 +261,33 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
         pd.DataFrame(summaries_perm), pd.DataFrame(summaries_ic)
         )
 
-def _pack_covariates(covariates_df, expression_samples):
+class CovariatesDict(TypedDict):
+    """
+    Split of covariate table into metadata table and values array
+    """
+    meta_c: pd.DataFrame
+    values_cs: npt.NDArray[np.float32]
+
+def _pack_covariates(covariates_df: pd.DataFrame, expression_samples: list[str]
+        ) -> CovariatesDict:
     """
     Split covariate df into a metadata frame and a compact array of values,
     after subsetting the right columns
     """
-    return dict(
-        meta_c = covariates_df[[covariates_df.columns[0]]],
-        values_cs = np.array(covariates_df[expression_samples])
-        )
+    return {
+            'meta_c': covariates_df[[covariates_df.columns[0]]],
+            'values_cs': np.array(covariates_df[expression_samples])
+            }
 
-def _pack_expression(expression):
+class ExpressionDict(TypedDict):
+    """
+    Expression dataframe with expression values extracted as an array
+    """
+    meta_x: pd.DataFrame
+    values_xs: npt.NDArray[np.float32]
+    samples: list[str]
+
+def _pack_expression(expression: tuple[pd.DataFrame, int]) -> ExpressionDict:
     """
     Split expression data frame
     """
@@ -279,11 +296,11 @@ def _pack_expression(expression):
     meta_columns = expression_df.columns[:n_meta]
     data_columns = expression_df.columns[n_meta:]
 
-    return dict(
-        meta_x = expression_df[meta_columns],
-        values_xs = np.array(expression_df[data_columns]),
-        samples = data_columns
-        )
+    return {
+            'meta_x': expression_df[meta_columns],
+            'values_xs': np.array(expression_df[data_columns]),
+            'samples': list(data_columns)
+            }
 
 def _regress_genotype(genotype, covariates):
     return dataclasses.replace(genotype,

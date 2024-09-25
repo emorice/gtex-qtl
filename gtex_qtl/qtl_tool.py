@@ -51,11 +51,7 @@ def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
                 :func:`gtex_qtl.qtl.call_qtls`
 
     """
-    merged_qtl_tool_config  = dict(
-            DEFAULT_QTL_TOOL_CONFIG,
-            **(qtl_tool_config or {})
-            )
-    del qtl_tool_config
+    merged_qtl_tool_config = DEFAULT_QTL_TOOL_CONFIG  | (qtl_tool_config or {})
 
     expression_df = pd.read_table(expression_bed)
 

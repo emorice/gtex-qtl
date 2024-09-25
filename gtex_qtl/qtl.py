@@ -204,8 +204,7 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     Returns:
         data frame of pair associations
     """
-    merged_qtl_config = dict(DEFAULT_QTL_CONFIG, **(qtl_config or {}))
-    del qtl_config
+    merged_qtl_config = DEFAULT_QTL_CONFIG | (qtl_config or {})
 
     expression = _pack_expression(expression_df)
 
@@ -398,7 +397,8 @@ def _filter_genotype_proximity(genotype, expression_item, qtl_config):
             meta=genotype.meta.assign(tss_distance=rel_pos)
             )
 
-def _call_gene(genotype, expression_item, expression, covariates, qtl_config):
+def _call_gene(genotype, expression_item, expression, covariates,
+        qtl_config: QtlConfigDict):
     """
     Compute all pairwise associations, plus the gene-level statistics for one
     gene

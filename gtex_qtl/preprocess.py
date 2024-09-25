@@ -362,4 +362,5 @@ def filter_format_pcs(genotype_pcs_path):
     pcs_df.to_csv(dst_path, sep='\t', index=False)
     return dst_path
 
-gpcs_covariates = filter_format_pcs(local_settings.GTEX_GENOTYPE_PCS_FILE)
+def gpcs_covariates():
+    return filter_format_pcs(local_settings.GTEX_GENOTYPE_PCS_FILE)

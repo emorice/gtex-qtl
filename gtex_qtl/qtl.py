@@ -148,7 +148,7 @@ class _Genotype:
 
 class QtlConfigDict(TypedDict, total=False):
     """
-    Qtl calling options, see `call_qtls`
+    Qtl calling options, see :func:`call_qtls`
     """
     window_size: int
     maf: float
@@ -261,7 +261,7 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
         pd.DataFrame(summaries_perm), pd.DataFrame(summaries_ic)
         )
 
-class CovariatesDict(TypedDict):
+class _CovariatesDict(TypedDict):
     """
     Split of covariate table into metadata table and values array
     """
@@ -269,7 +269,7 @@ class CovariatesDict(TypedDict):
     values_cs: npt.NDArray[np.float32]
 
 def _pack_covariates(covariates_df: pd.DataFrame, expression_samples: list[str]
-        ) -> CovariatesDict:
+        ) -> _CovariatesDict:
     """
     Split covariate df into a metadata frame and a compact array of values,
     after subsetting the right columns
@@ -279,7 +279,7 @@ def _pack_covariates(covariates_df: pd.DataFrame, expression_samples: list[str]
             'values_cs': np.array(covariates_df[expression_samples])
             }
 
-class ExpressionDict(TypedDict):
+class _ExpressionDict(TypedDict):
     """
     Expression dataframe with expression values extracted as an array
     """
@@ -287,7 +287,7 @@ class ExpressionDict(TypedDict):
     values_xs: npt.NDArray[np.float32]
     samples: list[str]
 
-def _pack_expression(expression: tuple[pd.DataFrame, int]) -> ExpressionDict:
+def _pack_expression(expression: tuple[pd.DataFrame, int]) -> _ExpressionDict:
     """
     Split expression data frame
     """

@@ -20,7 +20,8 @@ dev = [
   "sphinx",
   "pydata-sphinx-theme",
   "pynvim",
-  "jedi"
+  "jedi",
+  "pytest",
 ]
 
 [project.scripts]

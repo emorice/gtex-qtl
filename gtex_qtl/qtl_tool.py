@@ -2,22 +2,31 @@
 Wrapper around the qtl caller for pipelining
 """
 
-import gzip
+from typing import TypedDict
+
 import pandas as pd
 import galp
 from galp import step
 
 from . import qtl
 
-DEFAULT_QTL_TOOL_CONFIG = {
+class QtlToolConfigDict(TypedDict, total=False):
+    """
+    Options for qtl caller, see `call_qtl`
+    """
+    n_bins: int
+    bed_fixed_fields: int
+    qtl_core_config: qtl.QtlConfigDict | None
+
+DEFAULT_QTL_TOOL_CONFIG: QtlToolConfigDict = {
     'n_bins': 100,
     'bed_fixed_fields': 2,
     'qtl_core_config': None
     }
 
 @step(vtag='0.4 fix fix dofs mle')
-def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
-        gx_covariates_file, qtl_tool_config=None):
+def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
+        gx_covariates_file: str, qtl_tool_config: QtlToolConfigDict | None = None):
     """
     Meta step to create the chunked qtl calling graph
 
@@ -42,21 +51,26 @@ def call_qtl(genotype_vcf, expression_bed, gt_covariates_file,
                 :func:`gtex_qtl.qtl.call_qtls`
 
     """
-    qtl_tool_config = dict(DEFAULT_QTL_TOOL_CONFIG, **qtl_tool_config)
+    merged_qtl_tool_config  = dict(
+            DEFAULT_QTL_TOOL_CONFIG,
+            **(qtl_tool_config or {})
+            )
+    del qtl_tool_config
 
     expression_df = pd.read_table(expression_bed)
 
-    windows = qtl.split_genes(expression_df, qtl_tool_config['n_bins'])
+    windows = qtl.split_genes(expression_df, merged_qtl_tool_config['n_bins'])
 
     return merge_qtl([
         call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
             gx_covariates_file, window,
-            qtl_tool_config)
+            merged_qtl_tool_config)
         for window in windows])
 
 @step(vtag='0.3 fix fix dofs mle')
-def call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
-        gx_covariates_file, window, qtl_tool_config):
+def call_qtl_bin(genotype_vcf: str, expression_bed: str,
+        gt_covariates_file: str, gx_covariates_file: str,
+        window: tuple[int, int], qtl_tool_config: QtlToolConfigDict):
     """
     Run the qtl caller on one chunk, and write down the results to disk
     """
@@ -102,7 +116,7 @@ def merge_qtl(bins):
 #            pd.read_feather(_bin['all_pairs_path']).to_csv(
 #                    stream, sep='\t', header=False
 #                    )
-    pairs_path = None
+#    pairs_path = None
 
     egenes_paths = {}
     for key in ('egenes_perm', 'egenes_ic'):

@@ -5,9 +5,10 @@ QTL calling
 import logging
 import dataclasses
 from dataclasses import dataclass
-from typing import List
+from typing import TypedDict
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy.special import betainc
 
@@ -16,7 +17,8 @@ from . import stats
 
 logger = logging.getLogger(__name__)
 
-def split_genes(expression_df, n_bins):
+def split_genes(expression_df: pd.DataFrame, n_bins: int
+        ) -> list[tuple[int, int]]:
     """
     Allocates genes in bins such that bins are within the same chromosomes
 
@@ -139,12 +141,21 @@ def _filter_genotype_sites(genotype, keep_sites):
 
 @dataclass(frozen=True)
 class _Genotype:
-    samples: List[str]
+    samples: list[str]
     meta: pd.DataFrame
-    valid: np.array
-    dosages: np.array
+    valid: npt.NDArray[np.bool]
+    dosages: npt.NDArray[np.uint8]
 
-DEFAULT_QTL_CONFIG = {
+class QtlConfigDict(TypedDict, total=False):
+    """
+    Qtl calling options, see `call_qtls`
+    """
+    window_size: int
+    maf: float
+    impute_genotype: bool
+    num_null_genes: int
+
+DEFAULT_QTL_CONFIG: QtlConfigDict = {
         'window_size': 10**6,
         'maf': 0.01,
         'impute_genotype': True,
@@ -156,7 +167,7 @@ Default options for :func:`call_qtls`
 
 def call_qtls(expression_df, gene_window_indexes, vcf_path,
         gt_covariates_df, gx_covariates_df,
-        vcf_index=None, qtl_config=None):
+        vcf_index=None, qtl_config: QtlConfigDict | None = None):
     """
     Draft QTL calling.
 
@@ -193,12 +204,13 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
     Returns:
         data frame of pair associations
     """
-    qtl_config = dict(DEFAULT_QTL_CONFIG, **(qtl_config or {}))
+    merged_qtl_config = dict(DEFAULT_QTL_CONFIG, **(qtl_config or {}))
+    del qtl_config
 
     expression = _pack_expression(expression_df)
 
     chrom, genotype_window = _make_genotype_window(expression['meta_x'],
-            gene_window_indexes, qtl_config['window_size'])
+            gene_window_indexes, merged_qtl_config['window_size'])
 
     _, genotype_samples = vcf.read_header(vcf_path)
     if vcf_index is None:
@@ -217,10 +229,10 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
             100 * (1. - np.sum(genotype.valid) / genotype.valid.size))
 
     # Mind the order !
-    genotype = _filter_genotype_maf(genotype, qtl_config['maf'])
+    genotype = _filter_genotype_maf(genotype, merged_qtl_config['maf'])
     genotype = _filter_genotype_samples(genotype, expression['samples'])
 
-    if qtl_config['impute_genotype']:
+    if merged_qtl_config['impute_genotype']:
         logger.info('Imputing missing genotypes')
         genotype = _impute_genotypes(genotype)
 
@@ -238,7 +250,7 @@ def call_qtls(expression_df, gene_window_indexes, vcf_path,
 
     logger.info('Computing associations')
     pairs, summaries_perm, summaries_ic = zip(*(
-        _call_gene(genotype, expression_item, expression, gx_covariates, qtl_config)
+        _call_gene(genotype, expression_item, expression, gx_covariates, merged_qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ))
 

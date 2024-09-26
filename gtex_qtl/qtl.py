@@ -198,7 +198,8 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
             - **window_size**: number of bases upstream and downstream of the `start`
             - **maf**: minimum maf filter to apply
             - **impute_genotype**: whether to replace missing genotype dosages
-              by the sample mean.
+              by the sample mean. Must be True, default, False is a legacy
+              unsupported option.
             - **num_null_genes**: number of genes to sample to create the null
               set for empirical null distribution estimation
 
@@ -237,6 +238,10 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
     if merged_qtl_config['impute_genotype']:
         logger.info('Imputing missing genotypes')
         genotype = _impute_genotypes(genotype)
+    else:
+        raise ValueError(
+        'Missing genotypes without imputation are not supported anymore'
+        )
 
     gt_covariates = _pack_covariates(gt_covariates_df, expression['samples'])
     logger.info('Loaded %d genotype covariates', len(gt_covariates['meta_c']))

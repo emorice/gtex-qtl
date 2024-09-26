@@ -19,6 +19,47 @@ from . import stats
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+# Public data structures for configuration of caller
+# ==================================================
+
+class QtlConfigDict(TypedDict, total=False):
+    """
+    Qtl calling options, see :func:`call_qtls`
+    """
+    window_size: int
+    maf: float
+    impute_genotype: bool
+    num_null_genes: int
+
+DEFAULT_QTL_CONFIG: QtlConfigDict = {
+        'window_size': 10**6,
+        'maf': 0.01,
+        'impute_genotype': True,
+        'num_null_genes': 10**4,
+        }
+"""
+Default options for :func:`call_qtls`
+"""
+
+class Regressor(TypedDict):
+    """
+    Specification of a regression to apply before QTL calling
+    """
+    method: str
+    data: object
+
+class QTLRegressors(TypedDict):
+    """
+    List of all regressors to apply to expression/genotype
+    """
+    genotype: list[Regressor]
+    expression: list[Regressor]
+
+
+# Public functions
+# ================
+
 def split_genes(expression_df: pd.DataFrame, n_bins: int
         ) -> list[tuple[int, int]]:
     """
@@ -79,97 +120,8 @@ def split_genes(expression_df: pd.DataFrame, n_bins: int
 
     return pairs
 
-def _make_genotype_window(expression_df, gene_window_indexes, window_size):
-    chrom_col, start_col = expression_df.columns[:2]
-
-    gene_meta = expression_df[[chrom_col, start_col]]
-    (_, first_meta), (_, last_meta) = (
-        gene_meta
-        .iloc[list(gene_window_indexes)]
-        .iterrows()
-        )
-
-    chrom, chrom_last = first_meta[chrom_col], last_meta[chrom_col]
-
-    if chrom != chrom_last:
-        raise ValueError('First and last gene must be in the same chromosome '
-            f'(got "{chrom}" and "{chrom_last}").')
-
-    return chrom, (
-            int(first_meta[start_col]) - window_size,
-            int(last_meta[start_col]) + window_size
-            )
-
-def _filter_genotype_samples(genotype, expression_samples):
-    esample_set = set(expression_samples)
-    keep_samples = np.array([
-        sample in esample_set
-        for sample in genotype.samples])
-    logger.info('Excluding %s samples with no matching phenotype from genotype '
-            '(%s remaining)',
-            len(genotype.samples) - keep_samples.sum(), keep_samples.sum()
-            )
-
-    filtered = _Genotype(
-            [sample for sample in genotype.samples if sample in esample_set],
-            genotype.meta,
-            genotype.valid[:, keep_samples],
-            genotype.dosages[:, keep_samples]
-            )
-
-    return filtered
-
-def _filter_genotype_maf(genotype, maf):
-    mafs = genotype.dosages.sum(-1) / genotype.valid.sum(-1) / 2.
-    mafs = np.minimum(mafs, 1. - mafs)
-
-    keep_sites = mafs >= maf
-
-    logger.info('Excluding %s sites with MAF less than %s '
-            '(%s [%.2f%%] remaining)',
-            len(keep_sites) - keep_sites.sum(), maf, keep_sites.sum(),
-            100 * keep_sites.sum() / len(keep_sites)
-            )
-
-    return _filter_genotype_sites(genotype, keep_sites)
-
-def _filter_genotype_sites(genotype, keep_sites):
-    return _Genotype(
-            genotype.samples,
-            genotype.meta[keep_sites],
-            genotype.valid[keep_sites, :],
-            genotype.dosages[keep_sites, :],
-            )
-
-@dataclass(frozen=True)
-class _Genotype:
-    samples: list[str]
-    meta: pd.DataFrame
-    valid: npt.NDArray[np.bool]
-    dosages: npt.NDArray[np.uint8]
-
-class QtlConfigDict(TypedDict, total=False):
-    """
-    Qtl calling options, see :func:`call_qtls`
-    """
-    window_size: int
-    maf: float
-    impute_genotype: bool
-    num_null_genes: int
-
-DEFAULT_QTL_CONFIG: QtlConfigDict = {
-        'window_size': 10**6,
-        'maf': 0.01,
-        'impute_genotype': True,
-        'num_null_genes': 10**4,
-        }
-"""
-Default options for :func:`call_qtls`
-"""
-
 def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
-        tuple[int, int], vcf_path: str, gt_covariates_df: pd.DataFrame,
-        gx_covariates_df: pd.DataFrame | None,
+        tuple[int, int], vcf_path: str, regressors: QTLRegressors,
         vcf_index: vcf.VCFSimpleIndex | None = None,
         qtl_config: QtlConfigDict | None = None):
     """
@@ -227,8 +179,7 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
                 chrom, *genotype_window)
                 )
 
-    logger.info("Loaded %s sites from %s samples", genotype.dosages.shape[0],
-            genotype.dosages.shape[1])
+    logger.info("Loaded %s sites from %s samples", *genotype.dosages_gs.shape)
     logger.info("%.3f%% missing genotypes",
             100 * (1. - np.sum(genotype.valid) / genotype.valid.size))
 
@@ -244,21 +195,9 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
         'Missing genotypes without imputation are not supported anymore'
         )
 
-    gt_covariates = _pack_covariates(gt_covariates_df, expression['samples'])
-    logger.info('Loaded %d genotype covariates', len(gt_covariates['meta_c']))
-
-    if gx_covariates_df is None:
-        gx_covariates = None
-    else:
-        gx_covariates = _pack_covariates(gx_covariates_df, expression['samples'])
-        logger.info('Loaded %d gene expression covariates', len(gx_covariates['meta_c']))
-
-
-    genotype = _regress_genotype(genotype, gt_covariates)
-
     logger.info('Computing associations')
     pairs, summaries_perm, summaries_ic = zip(*(
-        _call_gene(genotype, expression_item, expression, gx_covariates, merged_qtl_config)
+        _call_gene(genotype, expression_item, expression, regressors, merged_qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ))
 
@@ -268,6 +207,101 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
         pd.concat(pairs).reset_index(drop=True),
         pd.DataFrame(summaries_perm), pd.DataFrame(summaries_ic)
         )
+
+# Internals
+# =========
+
+# Data structures
+# ---------------
+
+@dataclass(frozen=True)
+class _Genotype:
+    samples: list[str]
+    meta: pd.DataFrame
+    valid: npt.NDArray[np.bool]
+    dosages_gs: npt.NDArray[np.uint8] | npt.NDArray[np.float32]
+
+
+class _ExpressionDict(TypedDict):
+    """
+    Expression dataframe with expression values extracted as an array
+    """
+    meta_x: pd.DataFrame
+    values_xs: npt.NDArray[np.float32]
+    samples: list[str]
+
+class _ExpressionItemDict(TypedDict):
+    """
+    Single gene expression from _ExpressionDict
+    """
+    meta: pd.Series
+    values_s: npt.NDArray[np.float32]
+    samples: list[str]
+
+# Functions
+# ---------
+
+def _make_genotype_window(expression_df, gene_window_indexes, window_size):
+    chrom_col, start_col = expression_df.columns[:2]
+
+    gene_meta = expression_df[[chrom_col, start_col]]
+    (_, first_meta), (_, last_meta) = (
+        gene_meta
+        .iloc[list(gene_window_indexes)]
+        .iterrows()
+        )
+
+    chrom, chrom_last = first_meta[chrom_col], last_meta[chrom_col]
+
+    if chrom != chrom_last:
+        raise ValueError('First and last gene must be in the same chromosome '
+            f'(got "{chrom}" and "{chrom_last}").')
+
+    return chrom, (
+            int(first_meta[start_col]) - window_size,
+            int(last_meta[start_col]) + window_size
+            )
+def _filter_genotype_samples(genotype: _Genotype, expression_samples: list[str]
+        ) -> _Genotype:
+    esample_set = set(expression_samples)
+    keep_samples = np.array([
+        sample in esample_set
+        for sample in genotype.samples])
+    logger.info('Excluding %s samples with no matching phenotype from genotype '
+            '(%s remaining)',
+            len(genotype.samples) - keep_samples.sum(), keep_samples.sum()
+            )
+
+    filtered = _Genotype(
+            [sample for sample in genotype.samples if sample in esample_set],
+            genotype.meta,
+            genotype.valid[:, keep_samples],
+            genotype.dosages_gs[:, keep_samples]
+            )
+
+    return filtered
+
+def _filter_genotype_maf(genotype: _Genotype, maf: float) -> _Genotype:
+    mafs = genotype.dosages_gs.sum(-1) / genotype.valid.sum(-1) / 2.
+    mafs = np.minimum(mafs, 1. - mafs)
+
+    keep_sites = mafs >= maf
+
+    logger.info('Excluding %s sites with MAF less than %s '
+            '(%s [%.2f%%] remaining)',
+            len(keep_sites) - keep_sites.sum(), maf, keep_sites.sum(),
+            100 * keep_sites.sum() / len(keep_sites)
+            )
+
+    return _filter_genotype_sites(genotype, keep_sites)
+
+def _filter_genotype_sites(genotype: _Genotype, keep_sites) -> _Genotype:
+    return _Genotype(
+            genotype.samples,
+            genotype.meta[keep_sites],
+            genotype.valid[keep_sites, :],
+            genotype.dosages_gs[keep_sites, :],
+            )
 
 class _CovariatesDict(TypedDict):
     """
@@ -286,15 +320,6 @@ def _pack_covariates(covariates_df: pd.DataFrame, expression_samples: list[str]
             'meta_c': covariates_df[[covariates_df.columns[0]]],
             'values_cs': np.array(covariates_df[expression_samples])
             }
-
-class _ExpressionDict(TypedDict):
-    """
-    Expression dataframe with expression values extracted as an array
-    """
-    meta_x: pd.DataFrame
-    values_xs: npt.NDArray[np.float32]
-    samples: list[str]
-
 def _pack_expression(expression: tuple[pd.DataFrame, int]) -> _ExpressionDict:
     """
     Split expression data frame
@@ -312,8 +337,8 @@ def _pack_expression(expression: tuple[pd.DataFrame, int]) -> _ExpressionDict:
 
 def _regress_genotype(genotype, covariates):
     return dataclasses.replace(genotype,
-            dosages=stats.regress_missing(
-                genotype.dosages,
+            dosages_gs=stats.regress_missing(
+                genotype.dosages_gs,
                 genotype.valid,
                 covariates['values_cs']
                 )
@@ -346,7 +371,7 @@ def _iter_expression(expression, gene_window_indexes, progress=True):
         )
 
 def _call_pairs(genotype, expression):
-    gt_gs = genotype.dosages
+    gt_gs = genotype.dosages_gs
     valid_gs = genotype.valid
 
     gx_xs = expression['values_xs']
@@ -384,7 +409,7 @@ def _dev_and_pval(slope_xg, st2_xg, n_valid_g, dofs):
 
     return slope_pval_xg, np.sqrt(slope_var_xg)
 
-def _make_null_genes(expression_item, n_perms):
+def _make_null_genes(expression_item: _ExpressionItemDict, n_perms: int) -> _ExpressionDict:
     """
     Generate expression with no association to genotype
 
@@ -423,7 +448,36 @@ def _filter_genotype_proximity(genotype, expression_item, qtl_config):
             meta=genotype.meta.assign(tss_distance=rel_pos)
             )
 
-def _call_gene(genotype, expression_item, expression, covariates,
+def _apply_regressors(data_bs: npt.NDArray,
+        regressors: list[Regressor], expression: _ExpressionDict
+        ) -> npt.NDArray[np.float32]:
+    for regressor in regressors:
+        match regressor['method']:
+            case 'external':
+                covariates_df = regressor['data']
+                assert isinstance(covariates_df, pd.DataFrame)
+                covariates_cs = np.array(covariates_df[expression['samples']])
+                data_bs = stats.regress(data_bs, covariates_cs)
+            case 'auto':
+                raise NotImplementedError
+    return data_bs
+
+def _estimate_regressors_dofs(regressors: list[Regressor]) ->  int:
+    dofs = 0
+    for regressor in regressors:
+        match regressor['method']:
+            case 'external':
+                covariates_df = regressor['data']
+                assert isinstance(covariates_df, pd.DataFrame)
+                # Dofs is number of covariates plus 1 since there's an
+                # intercept in stats.regress
+                dofs += len(covariates_df) + 1
+            case 'auto':
+                raise NotImplementedError
+    return dofs
+
+def _call_gene(genotype: _Genotype, expression_item,
+        expression: _ExpressionDict, regressors: QTLRegressors,
         qtl_config: QtlConfigDict):
     """
     Compute all pairwise associations, plus the gene-level statistics for one
@@ -436,23 +490,32 @@ def _call_gene(genotype, expression_item, expression, covariates,
     # Filter genotype by distance
     genotype = _filter_genotype_proximity(genotype, expression_item, qtl_config)
 
-    pairs = _call_true_pairs(genotype, expression_item, covariates)
+    # Apply gene-specific genotype regressors
+    genotype = dataclasses.replace(genotype,
+        dosages_gs = _apply_regressors(genotype.dosages_gs,
+            regressors['genotype'], expression)
+        )
+
+    pairs = _call_true_pairs(genotype, expression_item,
+            regressors['expression'], expression)
 
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
 
     summary_perm = _call_null_perm(
-            genotype, expression_item, covariates, qtl_config,
-            best_pair
+            genotype, expression_item, regressors['expression'], qtl_config,
+            best_pair, expression,
             )
 
     summary_interchrom = _call_null_interchrom(
             genotype, expression_item, expression,
-            covariates, qtl_config, best_pair
+            regressors['expression'], qtl_config, best_pair
             )
 
     return pairs, summary_perm, summary_interchrom
 
-def _call_true_pairs(genotype, expression_item, covariates):
+def _call_true_pairs(genotype: _Genotype, expression_item,
+        regressors: list[Regressor], expression: _ExpressionDict
+        ) -> pd.DataFrame:
     """
     Compute association on the real gene expression and generate dataframe of
     associations
@@ -465,18 +528,14 @@ def _call_true_pairs(genotype, expression_item, covariates):
     del true_expression['values_s']
 
     # Residualize true gene
-    true_expression = _regress_expression(true_expression, covariates)
+    true_expression['values_xs'] = _apply_regressors(
+            true_expression['values_xs'], regressors, expression)
 
     # Compute associations
     slope_g, scaled_t2_g = _call_pairs(genotype, true_expression)
 
     # Compute deviation and tests ("nominal" p-values)
-
-    ## Dofs is number of covariates plus 1 since there's an intercept
-    if covariates is None:
-        dofs = 0
-    else:
-        dofs = len(covariates['meta_c']) + 1
+    dofs = _estimate_regressors_dofs(regressors)
 
     slope_pval_g, slope_std_g = _dev_and_pval(
             slope_g, scaled_t2_g, np.sum(genotype.valid, -1), dofs
@@ -494,7 +553,9 @@ def _call_true_pairs(genotype, expression_item, covariates):
             )
         )
 
-def _call_null_perm(genotype, expression_item, covariates, qtl_config, best_pair):
+def _call_null_perm(genotype: _Genotype, expression_item, regressors:
+        list[Regressor], qtl_config: QtlConfigDict, best_pair,
+        expression: _ExpressionDict):
     """
     Compute null distribution statistics from permutations
     """
@@ -504,8 +565,10 @@ def _call_null_perm(genotype, expression_item, covariates, qtl_config, best_pair
             qtl_config['num_null_genes'])
 
     # Residualize decoy genes
-    null_expression = _regress_expression(null_expression, covariates)
+    null_expression['values_xs'] = _apply_regressors(
+            null_expression['values_xs'], regressors, expression)
 
+    # Call null eQTLs
     return _call_null_any(genotype, expression_item, null_expression, best_pair)
 
 def _call_null_any(genotype, expression_item, null_expression, best_pair):
@@ -548,19 +611,22 @@ def _call_null_any(genotype, expression_item, null_expression, best_pair):
             )
 
 
-def _call_null_interchrom(genotype, expression_item, expression, covariates,
-        qtl_config, best_pair):
+def _call_null_interchrom(genotype: _Genotype,
+        expression_item: _ExpressionItemDict, expression: _ExpressionDict,
+        regressors: list[Regressor], qtl_config: QtlConfigDict, best_pair):
     """
     Compute null distribution statistics from between-chromosome associations
     """
 
+    # Sample decoy genes
     null_expression = _choose_interchrom_genes(expression_item, expression,
             qtl_config['num_null_genes'])
 
     # Residualize decoy genes
-    # In the future, this would be done ahead of this function
-    null_expression = _regress_expression(null_expression, covariates)
+    null_expression['values_xs'] = _apply_regressors(
+            null_expression['values_xs'], regressors, expression)
 
+    # Call null eQTLs
     return _call_null_any(genotype, expression_item, null_expression, best_pair)
 
 def _choose_interchrom_genes(expression_item, expression, num_genes):
@@ -601,9 +667,9 @@ def _impute_genotypes(genotype):
     """
     Replace missing genotype dosages by the sample mean
     """
-    mean_g = np.sum(genotype.dosages, -1) / np.sum(genotype.valid, -1)
+    mean_g = np.sum(genotype.dosages_gs, -1) / np.sum(genotype.valid, -1)
 
     return dataclasses.replace(genotype,
-            dosages = np.where(genotype.valid, genotype.dosages, mean_g[:, None]),
+            dosages_gs = np.where(genotype.valid, genotype.dosages_gs, mean_g[:, None]),
             valid = genotype.valid |~ genotype.valid
             )

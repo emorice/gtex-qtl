@@ -65,18 +65,29 @@ def test_call_qtls(vcf_path) -> None:
         )
 
     covariates = pd.DataFrame({
-        'variable': [],
+        'variable': [],#['sex'],
         } | {
-            f'sample{i+1}': []
+            f'sample{i+1}': [] #[rng.choice(2)]
             for i in range(n_samples)
         })
+
+    gt_regressors = [
+            { 'method': 'external', 'data': covariates},
+            #{ 'method': 'auto', 'data': None}
+            ]
+    gx_regressors = [
+            #{ 'method': 'external', 'data': covariates},
+            #{ 'method': 'auto', 'data': None}
+            ]
 
     calls = call_qtls(
             (expression, 2),
             (0, 10),
             vcf_path,
-            covariates, # gt covariates
-            None, # gx covariates
+            {
+                'genotype': gt_regressors, # gt covariates
+                'expression': gx_regressors, # gx covariates
+                },
             qtl_config={
                 'num_null_genes': 450,
                 },

@@ -10,6 +10,7 @@ from typing import TypedDict
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from tqdm.auto import tqdm
 from scipy.special import betainc
 
 from . import vcf
@@ -328,9 +329,10 @@ def _regress_expression(expression, covariates):
                 )
             )
 
-def _iter_expression(expression, gene_window_indexes):
+def _iter_expression(expression, gene_window_indexes, progress=True):
     start, stop = gene_window_indexes
     stop += 1
+    wrap = tqdm if progress else (lambda x: x)
     return ({
         'meta': meta,
         'values_s': values,
@@ -339,7 +341,7 @@ def _iter_expression(expression, gene_window_indexes):
         for (_, meta), values in
         zip(
             expression['meta_x'].iloc[start:stop].iterrows(),
-            expression['values_xs'][start:stop]
+            wrap(expression['values_xs'][start:stop])
             )
         )
 
@@ -574,7 +576,7 @@ def _choose_interchrom_genes(expression_item, expression, num_genes):
         expression['meta_x'][chr_col] != target_chr
         ))
 
-    logger.info('Found %d inter-chrom genes to choose from out of %d',
+    logger.debug('Found %d inter-chrom genes to choose from out of %d',
             len(igenes_indices), len(expression['meta_x']))
 
     # Same rng seeding strategy as in _make_null_genes

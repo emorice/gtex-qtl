@@ -56,7 +56,7 @@ def test_call_qtls(vcf_path) -> None:
 
     expression = pd.DataFrame({
         # One gene on test chrom, all others as controls on other chrom
-        'chrom': ['1'] + ['2'] * (n_genes - 1),
+        'chrom': ['1'] * (n_genes // 2) + ['2'] * (n_genes // 2),
         'start': np.arange(n_genes) + 1,
         } | {
             f'sample{i+1}': expr_g
@@ -73,12 +73,12 @@ def test_call_qtls(vcf_path) -> None:
 
     calls = call_qtls(
             (expression, 2),
-            (0, 0),
+            (0, 10),
             vcf_path,
             covariates, # gt covariates
             None, # gx covariates
             qtl_config={
-                'num_null_genes': 900,
+                'num_null_genes': 450,
                 },
             )
 

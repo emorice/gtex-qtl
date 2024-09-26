@@ -10,7 +10,6 @@ import scipy.special
 from scipy.special import digamma, betaln
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 def regress(data_bs, covariates_cs):
     """

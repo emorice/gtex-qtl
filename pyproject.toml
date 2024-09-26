@@ -12,6 +12,7 @@ dependencies = [
     "aiohttp", # http galp interface
     "gemz[peer] @ git+ssh://git@github.com/emorice/gemz.git",
     "gemz_galp @ git+ssh://git@github.com/emorice/gemz-galp.git",
+    "tqdm",
     ]
 
 [project.optional-dependencies]

@@ -10,7 +10,7 @@ import pytest
 from gtex_qtl.qtl import call_qtls
 
 @pytest.fixture
-def vcf_path(tmp_path):
+def vcf(tmp_path):
     """
     VCF fixture
     """
@@ -38,17 +38,23 @@ def vcf_path(tmp_path):
             fd.write('\n')
 
     subprocess.check_call(f'bgzip {path}', shell=True)
-    return f'{path}.gz'
+    return f'{path}.gz', gts
 
-def test_call_qtls(vcf_path) -> None:
+def test_call_qtls(vcf) -> None:
     """
     Returns well-formed calls
     """
+    vcf_path, gts = vcf
     rng = np.random.default_rng(1)
     n_samples = 30
     n_genes = 1000
 
-    expr_sg = rng.normal(size=(n_samples, n_genes))
+    # Draw a common random factor
+    factor_s = rng.normal(size=n_samples)
+    # Draw genes with large share of variance from factor
+    expr_sg = 0.97 * factor_s[:, None] + 0.22 * rng.normal(size=(n_samples, n_genes))
+    #  Add a large genetic effect to first ten genes
+    expr_sg[:, :10] += .5 * gts.sum(-1).T
 
     expression = pd.DataFrame({
         # One gene on test chrom, all others as controls on other chrom

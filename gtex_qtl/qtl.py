@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from tqdm.auto import tqdm
-from scipy.special import betainc
+from scipy.special import betainc # type: ignore # pylint: disable=no-name-in-module
 
 from . import vcf
 from . import stats
@@ -23,6 +23,13 @@ logger.setLevel(logging.INFO)
 # Public data structures for configuration of caller
 # ==================================================
 
+class Regressor(TypedDict):
+    """
+    Specification of a regression to apply before QTL calling
+    """
+    method: str
+    data: object
+
 class QtlConfigDict(TypedDict, total=False):
     """
     Qtl calling options, see :func:`call_qtls`
@@ -31,30 +38,20 @@ class QtlConfigDict(TypedDict, total=False):
     maf: float
     impute_genotype: bool
     num_null_genes: int
+    genotype_regressors: list[Regressor]
+    expression_regressors: list[Regressor]
 
 DEFAULT_QTL_CONFIG: QtlConfigDict = {
         'window_size': 10**6,
         'maf': 0.01,
         'impute_genotype': True,
         'num_null_genes': 10**4,
+        'genotype_regressors': [],
+        'expression_regressors': [],
         }
 """
 Default options for :func:`call_qtls`
 """
-
-class Regressor(TypedDict):
-    """
-    Specification of a regression to apply before QTL calling
-    """
-    method: str
-    data: object
-
-class QTLRegressors(TypedDict):
-    """
-    List of all regressors to apply to expression/genotype
-    """
-    genotype: list[Regressor]
-    expression: list[Regressor]
 
 
 # Public functions
@@ -90,8 +87,8 @@ def split_genes(expression_df: pd.DataFrame, n_bins: int
 
     # Allocate the rest priorizing minimizing max bin size
     for _ in range(bins.sum(), n_bins):
-        largest_bin = (genes_per_chrom / bins).argmax()
-        bins.iloc[largest_bin] += 1
+        largest_bin: int = (genes_per_chrom / bins).argmax() # type: ignore # fp
+        bins.iloc[largest_bin] += 1 # type: ignore[assignment] # fp
 
     assert bins.sum() == n_bins
 
@@ -121,7 +118,7 @@ def split_genes(expression_df: pd.DataFrame, n_bins: int
     return pairs
 
 def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
-        tuple[int, int], vcf_path: str, regressors: QTLRegressors,
+        tuple[int, int], vcf_path: str,
         vcf_index: vcf.VCFSimpleIndex | None = None,
         qtl_config: QtlConfigDict | None = None):
     """
@@ -197,7 +194,7 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
 
     logger.info('Computing associations')
     pairs, summaries_perm, summaries_ic = zip(*(
-        _call_gene(genotype, expression_item, expression, regressors, merged_qtl_config)
+        _call_gene(genotype, expression_item, expression, merged_qtl_config)
         for expression_item in _iter_expression(expression, gene_window_indexes)
         ))
 
@@ -431,8 +428,11 @@ def _make_null_genes(expression_item: _ExpressionItemDict, n_perms: int) -> _Exp
                 -1)
             ]
 
-    return dict(expression_item,
-            values_xs=perm_values_xs)
+    return {
+            'meta_x': pd.DataFrame(),
+            'samples': expression_item['samples'],
+            'values_xs': perm_values_xs
+            }
 
 def _filter_genotype_proximity(genotype, expression_item, qtl_config):
     """
@@ -477,8 +477,7 @@ def _estimate_regressors_dofs(regressors: list[Regressor]) ->  int:
     return dofs
 
 def _call_gene(genotype: _Genotype, expression_item,
-        expression: _ExpressionDict, regressors: QTLRegressors,
-        qtl_config: QtlConfigDict):
+        expression: _ExpressionDict, qtl_config: QtlConfigDict):
     """
     Compute all pairwise associations, plus the gene-level statistics for one
     gene
@@ -493,22 +492,22 @@ def _call_gene(genotype: _Genotype, expression_item,
     # Apply gene-specific genotype regressors
     genotype = dataclasses.replace(genotype,
         dosages_gs = _apply_regressors(genotype.dosages_gs,
-            regressors['genotype'], expression)
+            qtl_config['genotype_regressors'], expression)
         )
 
     pairs = _call_true_pairs(genotype, expression_item,
-            regressors['expression'], expression)
+            qtl_config['expression_regressors'], expression)
 
     best_pair = pairs.iloc[pairs.pval_nominal.argmin()]
 
     summary_perm = _call_null_perm(
-            genotype, expression_item, regressors['expression'], qtl_config,
+            genotype, expression_item, qtl_config,
             best_pair, expression,
             )
 
     summary_interchrom = _call_null_interchrom(
             genotype, expression_item, expression,
-            regressors['expression'], qtl_config, best_pair
+            qtl_config, best_pair
             )
 
     return pairs, summary_perm, summary_interchrom
@@ -553,8 +552,8 @@ def _call_true_pairs(genotype: _Genotype, expression_item,
             )
         )
 
-def _call_null_perm(genotype: _Genotype, expression_item, regressors:
-        list[Regressor], qtl_config: QtlConfigDict, best_pair,
+def _call_null_perm(genotype: _Genotype, expression_item,
+        qtl_config: QtlConfigDict, best_pair,
         expression: _ExpressionDict):
     """
     Compute null distribution statistics from permutations
@@ -566,12 +565,15 @@ def _call_null_perm(genotype: _Genotype, expression_item, regressors:
 
     # Residualize decoy genes
     null_expression['values_xs'] = _apply_regressors(
-            null_expression['values_xs'], regressors, expression)
+            null_expression['values_xs'],
+            qtl_config['expression_regressors'],
+            expression)
 
     # Call null eQTLs
     return _call_null_any(genotype, expression_item, null_expression, best_pair)
 
-def _call_null_any(genotype, expression_item, null_expression, best_pair):
+def _call_null_any(genotype: _Genotype, expression_item: _ExpressionItemDict,
+        null_expression: _ExpressionDict, best_pair):
     """
     Compute null distribution statistics from a pre-defined set of null genes
     """
@@ -613,7 +615,7 @@ def _call_null_any(genotype, expression_item, null_expression, best_pair):
 
 def _call_null_interchrom(genotype: _Genotype,
         expression_item: _ExpressionItemDict, expression: _ExpressionDict,
-        regressors: list[Regressor], qtl_config: QtlConfigDict, best_pair):
+        qtl_config: QtlConfigDict, best_pair):
     """
     Compute null distribution statistics from between-chromosome associations
     """
@@ -624,7 +626,9 @@ def _call_null_interchrom(genotype: _Genotype,
 
     # Residualize decoy genes
     null_expression['values_xs'] = _apply_regressors(
-            null_expression['values_xs'], regressors, expression)
+            null_expression['values_xs'],
+            qtl_config['expression_regressors'],
+            expression)
 
     # Call null eQTLs
     return _call_null_any(genotype, expression_item, null_expression, best_pair)

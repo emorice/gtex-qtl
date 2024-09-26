@@ -84,12 +84,10 @@ def test_call_qtls(vcf_path) -> None:
             (expression, 2),
             (0, 10),
             vcf_path,
-            {
-                'genotype': gt_regressors, # gt covariates
-                'expression': gx_regressors, # gx covariates
-                },
             qtl_config={
                 'num_null_genes': 450,
+                'genotype_regressors': gt_regressors, # gt covariates
+                'expression_regressors': gx_regressors, # gx covariates
                 },
             )
 

@@ -6,6 +6,8 @@ import enum
 import struct
 import logging
 import gzip
+from typing import TypeAlias
+
 import numpy as np
 import pandas as pd
 
@@ -52,7 +54,7 @@ def _read_bgzip_block_size(stream):
         raise NotImplementedError('Unknown extra field')
     return block_size + 1
 
-def _read_next_coo(stream):
+def _read_next_coo(stream) -> tuple[str, int]:
     """
     Extract next coordinate, when stream is at the start of a valid gzip block
     """
@@ -68,7 +70,10 @@ def _read_next_coo(stream):
         chrom, pos = line.split('\t', maxsplit=2)[:2]
         return chrom, int(pos)
 
-def make_simple_index(file, chunk_size=4<<20):
+# chrom, genomic position, pos in file (bytes)
+VCFSimpleIndex: TypeAlias = list[tuple[str, int, int]]
+
+def make_simple_index(file, chunk_size = 4<<20) -> VCFSimpleIndex:
     """
     Generates a light index of a BGZIP-compressed VCF
 
@@ -243,6 +248,6 @@ def read_header(file):
             if line.startswith('##'):
                 continue
             if line.startswith('#'):
-                fields = line[1:].split('\t')
+                fields = line[1:].rstrip().split('\t')
                 return fields[:VCFFields.SAMPLES], fields[VCFFields.SAMPLES:]
         raise ValueError('No header line found')

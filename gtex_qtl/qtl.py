@@ -167,7 +167,8 @@ Default options for :func:`call_qtls`
 
 def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
         tuple[int, int], vcf_path: str, gt_covariates_df: pd.DataFrame,
-        gx_covariates_df: pd.DataFrame | None, vcf_index=None,
+        gx_covariates_df: pd.DataFrame | None,
+        vcf_index: vcf.VCFSimpleIndex | None = None,
         qtl_config: QtlConfigDict | None = None):
     """
     Draft QTL calling.

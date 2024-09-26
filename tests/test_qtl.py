@@ -9,10 +9,6 @@ import pytest
 
 from gtex_qtl.qtl import call_qtls
 
-VCF_CONTENT = """
-#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample1\tsample2
-"""
-
 @pytest.fixture
 def vcf_path(tmp_path):
     """
@@ -73,11 +69,11 @@ def test_call_qtls(vcf_path) -> None:
 
     gt_regressors = [
             { 'method': 'external', 'data': covariates},
-            #{ 'method': 'auto', 'data': None}
+            { 'method': 'auto', 'data': None}
             ]
     gx_regressors = [
             { 'method': 'external', 'data': covariates},
-            #{ 'method': 'auto', 'data': None}
+            { 'method': 'auto', 'data': None}
             ]
 
     calls = call_qtls(

@@ -11,7 +11,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from tqdm.auto import tqdm
-from scipy.special import betainc # type: ignore # pylint: disable=no-name-in-module
+import scipy.special as sc # type: ignore
+import scipy.linalg # type: ignore
 
 from . import vcf
 from . import stats
@@ -366,7 +367,8 @@ def _dev_and_pval(slope_xg, st2_xg, n_valid_g, dofs):
 
     slope_var_xg = slope_xg**2 / (rdofs_g * st2_xg)
 
-    slope_pval_xg = betainc(.5 * rdofs_g, .5, 1. / (1. + st2_xg))
+    # pylint: disable=no-member
+    slope_pval_xg = sc.betainc(.5 * rdofs_g, .5, 1. / (1. + st2_xg))
 
     return slope_pval_xg, np.sqrt(slope_var_xg)
 
@@ -410,7 +412,8 @@ def _filter_genotype_proximity(genotype: _Genotype, expression_start: int,
             )
 
 def _apply_regressors(data_bs: npt.NDArray,
-        regressors: list[Regressor], expression: _ExpressionDict
+        regressors: list[Regressor], expression: _ExpressionDict,
+        expression_index: int
         ) -> npt.NDArray[np.float32]:
     for regressor in regressors:
         match regressor['method']:
@@ -420,8 +423,26 @@ def _apply_regressors(data_bs: npt.NDArray,
                 covariates_cs = np.array(covariates_df[expression['samples']])
                 data_bs = stats.regress(data_bs, covariates_cs)
             case 'auto':
-                raise NotImplementedError
+                data_bs = _auto_regress(data_bs, expression, expression_index)
     return data_bs
+
+def _auto_regress(data_bs: npt.NDArray, expression: _ExpressionDict,
+                  expression_index: int):
+    """
+    LOGO regression transform
+    """
+    expr_xs = expression['values_xs']
+    before_bs = expr_xs[:expression_index, :]
+    after_as = expr_xs[(expression_index + 1):, :]
+    gram_ss = before_bs.T @ before_bs + after_as.T @ after_as
+    # Factor as U'U. So U has dims (internal, external)
+    upper_is, lower = scipy.linalg.cho_factor(gram_ss)
+    assert not lower
+    # Uinv has dims (external, internal)
+    upper_inv_si = scipy.linalg.solve_triangular(
+            upper_is, np.eye(upper_is.shape[-1])
+            )
+    return data_bs @ upper_inv_si
 
 def _estimate_regressors_dofs(regressors: list[Regressor]) ->  int:
     dofs = 0
@@ -434,7 +455,8 @@ def _estimate_regressors_dofs(regressors: list[Regressor]) ->  int:
                 # intercept in stats.regress
                 dofs += len(covariates_df) + 1
             case 'auto':
-                raise NotImplementedError
+                # FIXME
+                return 0
     return dofs
 
 def _call_gene(genotype: _Genotype, expression_index: int,
@@ -455,7 +477,7 @@ def _call_gene(genotype: _Genotype, expression_index: int,
     # Apply gene-specific genotype regressors
     genotype = dataclasses.replace(genotype,
         dosages_gs = _apply_regressors(genotype.dosages_gs,
-            qtl_config['genotype_regressors'], expression)
+            qtl_config['genotype_regressors'], expression, expression_index)
         )
 
     pairs = _call_true_pairs(genotype, expression_index,
@@ -489,7 +511,7 @@ def _call_true_pairs(genotype: _Genotype, expression_index: int,
 
     # Residualize true gene
     true_expression_xs = _apply_regressors(
-            true_expression_xs, regressors, expression)
+            true_expression_xs, regressors, expression, expression_index)
 
     # Compute associations
     slope_g, scaled_t2_g = _call_pairs(genotype, true_expression_xs)
@@ -528,7 +550,7 @@ def _call_null_perm(genotype: _Genotype, expression_index,
     null_expression_xs = _apply_regressors(
             null_expression_xs,
             qtl_config['expression_regressors'],
-            expression)
+            expression, expression_index)
 
     # Call null eQTLs
     return _call_null_any(genotype,
@@ -590,7 +612,7 @@ def _call_null_interchrom(genotype: _Genotype,
     null_expression_xs = _apply_regressors(
             null_expression_xs,
             qtl_config['expression_regressors'],
-            expression)
+            expression, expression_index)
 
     # Call null eQTLs
     return _call_null_any(genotype,

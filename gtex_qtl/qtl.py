@@ -216,8 +216,7 @@ class _Genotype:
     samples: list[str]
     meta: pd.DataFrame
     valid: npt.NDArray[np.bool]
-    dosages_gs: npt.NDArray[np.uint8] | npt.NDArray[np.float32]
-
+    dosages_gs: npt.NDArray[np.number]
 
 class _ExpressionDict(TypedDict):
     """

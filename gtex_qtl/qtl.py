@@ -159,19 +159,8 @@ def call_qtls(expression_df: tuple[pd.DataFrame, int], gene_window_indexes:
 
     expression = _pack_expression(expression_df)
 
-    chrom, genotype_window = _make_genotype_window(expression['meta_x'],
-            gene_window_indexes, merged_qtl_config['window_size'])
-
-    _, genotype_samples = vcf.read_header(vcf_path)
-    if vcf_index is None:
-        logger.info('Indexing VCF')
-        vcf_index = vcf.make_simple_index(vcf_path)
-
-    logger.info('Reading genotypes from VCF')
-    genotype = _Genotype(genotype_samples, *vcf.parse_region_indexed(
-                vcf_path, vcf_index,
-                chrom, *genotype_window)
-                )
+    genotype = _load_genotype(expression, gene_window_indexes,
+            merged_qtl_config, vcf_path, vcf_index)
 
     logger.info("Loaded %s sites from %s samples", *genotype.dosages_gs.shape)
     logger.info("%.3f%% missing genotypes",
@@ -228,6 +217,22 @@ class _ExpressionDict(TypedDict):
 # Functions
 # ---------
 
+def _load_genotype(expression: _ExpressionDict,
+        gene_window_indexes: tuple[int, int], merged_qtl_config: QtlConfigDict,
+        vcf_path: str, vcf_index: vcf.VCFSimpleIndex | None) -> _Genotype:
+    chrom, genotype_window = _make_genotype_window(expression['meta_x'],
+            gene_window_indexes, merged_qtl_config['window_size'])
+
+    _, genotype_samples = vcf.read_header(vcf_path)
+    if vcf_index is None:
+        logger.info('Indexing VCF')
+        vcf_index = vcf.make_simple_index(vcf_path)
+
+    logger.info('Reading genotypes from VCF')
+    return _Genotype(genotype_samples, *vcf.parse_region_indexed(
+                vcf_path, vcf_index,
+                chrom, *genotype_window)
+                )
 def _make_genotype_window(expression_df, gene_window_indexes, window_size):
     chrom_col, start_col = expression_df.columns[:2]
 

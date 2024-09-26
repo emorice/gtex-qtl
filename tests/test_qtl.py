@@ -65,9 +65,9 @@ def test_call_qtls(vcf_path) -> None:
         )
 
     covariates = pd.DataFrame({
-        'variable': [],#['sex'],
+        'variable': ['sex'],
         } | {
-            f'sample{i+1}': [] #[rng.choice(2)]
+            f'sample{i+1}': [rng.choice(2)]
             for i in range(n_samples)
         })
 
@@ -76,7 +76,7 @@ def test_call_qtls(vcf_path) -> None:
             #{ 'method': 'auto', 'data': None}
             ]
     gx_regressors = [
-            #{ 'method': 'external', 'data': covariates},
+            { 'method': 'external', 'data': covariates},
             #{ 'method': 'auto', 'data': None}
             ]
 

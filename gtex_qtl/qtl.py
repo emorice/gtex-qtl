@@ -16,6 +16,7 @@ from . import vcf
 from . import stats
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 def split_genes(expression_df: pd.DataFrame, n_bins: int
         ) -> list[tuple[int, int]]:

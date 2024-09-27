@@ -5,7 +5,7 @@ QTL calling
 import logging
 import dataclasses
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import TypedDict, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -423,18 +423,31 @@ def _apply_regressors(data_bs: npt.NDArray,
                 covariates_cs = np.array(covariates_df[expression['samples']])
                 data_bs = stats.regress(data_bs, covariates_cs)
             case 'auto':
-                data_bs = _auto_regress(data_bs, expression, expression_index)
+                get_weights = regressor['data']
+                data_bs = _auto_regress(data_bs, expression, expression_index,
+                        get_weights) # type: ignore[arg-type]
     return data_bs
 
 def _auto_regress(data_bs: npt.NDArray, expression: _ExpressionDict,
-                  expression_index: int):
+        expression_index: int, get_weights: Callable | None):
     """
     LOGO regression transform
     """
     expr_xs = expression['values_xs']
+    n_genes, n_samples = expr_xs.shape
+
+    if get_weights is None:
+        weights_x = np.ones(n_genes)
+        weights_x[expression_index] = 0.0
+        reg = 0.0
+    else:
+        reg, weights_x = get_weights(expression_index)
+
+    expr_xs = expr_xs * np.sqrt(weights_x)[:, None]
+
     before_bs = expr_xs[:expression_index, :]
     after_as = expr_xs[(expression_index + 1):, :]
-    gram_ss = before_bs.T @ before_bs + after_as.T @ after_as
+    gram_ss = reg * np.eye(n_samples) + before_bs.T @ before_bs + after_as.T @ after_as
     # Factor as U'U. So U has dims (internal, external)
     upper_is, lower = scipy.linalg.cho_factor(gram_ss)
     assert not lower

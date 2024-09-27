@@ -4,6 +4,7 @@ Tests for gtex_qtl.qtl
 
 import subprocess
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pytest
 
@@ -40,9 +41,10 @@ def vcf(tmp_path):
     subprocess.check_call(f'bgzip {path}', shell=True)
     return f'{path}.gz', gts
 
-def test_call_qtls(vcf) -> None:
+@pytest.fixture
+def dataset(vcf):
     """
-    Returns well-formed calls
+    Test expression with the genotype
     """
     vcf_path, gts = vcf
     rng = np.random.default_rng(1)
@@ -66,6 +68,7 @@ def test_call_qtls(vcf) -> None:
         }
         )
 
+
     covariates = pd.DataFrame({
         'variable': ['sex'],
         } | {
@@ -73,19 +76,66 @@ def test_call_qtls(vcf) -> None:
             for i in range(n_samples)
         })
 
+    return {
+            'expression': expression,
+            'covariates': covariates,
+            'vcf_path': vcf_path,
+            'n_genes': n_genes,
+            }
+
+def test_call_qtls(dataset) -> None:
+    """
+    Returns well-formed calls
+    """
+
     gt_regressors: list[Regressor] = [
-            { 'method': 'external', 'data': covariates},
+            { 'method': 'external', 'data': dataset['covariates']},
             { 'method': 'auto', 'data': None}
             ]
     gx_regressors: list[Regressor] = [
-            { 'method': 'external', 'data': covariates},
+            { 'method': 'external', 'data': dataset['covariates']},
             { 'method': 'auto', 'data': None}
             ]
 
     calls = call_qtls(
-            (expression, 2),
-            (0, 10),
-            vcf_path,
+            (dataset['expression'], 2),
+            (0, 10), # 0 to 10 incl. so 11 genes
+            dataset['vcf_path'],
+            qtl_config={
+                'num_null_genes': 450,
+                'genotype_regressors': gt_regressors, # gt covariates
+                'expression_regressors': gx_regressors, # gx covariates
+                },
+            )
+
+    assert len(calls) == 3
+    assert all(isinstance(item, pd.DataFrame) for item in calls)
+    for item in calls:
+        print(item.to_string())
+
+def test_weighted_autoregression(dataset) -> None:
+    """
+    Call qtls with custom autoregression weights
+    """
+
+    def get_weights(gene_index: int) -> tuple[float, npt.NDArray]:
+        weights = np.ones(dataset['n_genes'])
+        weights[gene_index] = 0
+        return 1.0, 1.0 * weights
+
+    gt_regressors: list[Regressor] = [
+            { 'method': 'external', 'data': dataset['covariates']},
+            { 'method': 'auto', 'data': get_weights}
+            ]
+    gx_regressors: list[Regressor] = [
+            { 'method': 'external', 'data': dataset['covariates']},
+            { 'method': 'auto', 'data': get_weights}
+            ]
+
+    calls = call_qtls(
+            (dataset['expression'], 2),
+            (0, 10), # 0 to 10 incl. so 11 genes
+            dataset['vcf_path'],
             qtl_config={
                 'num_null_genes': 450,
                 'genotype_regressors': gt_regressors, # gt covariates

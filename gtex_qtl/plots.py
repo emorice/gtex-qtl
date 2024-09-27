@@ -157,7 +157,7 @@ def vs_egenes_peer_cmk(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
     """
     return vs_egenes(all_egenes_ic, (
         ('reimplementation', 'PEER'),
-        ('cmk', 'cmk')
+        ('auto_cmk', 'cmk')
         ))
 
 def vs_egenes(all_egenes: dict[str, pd.DataFrame], alts) -> go.Figure:
@@ -214,8 +214,14 @@ def export_all_plots(store: str, output: str) -> None:
     """
     os.makedirs(output, exist_ok=True)
 
-    all_egenes_ic = galp.run(gtex_qtl.all_egenes_ic, store=store)
-    all_egenes_perm = galp.run(gtex_qtl.all_egenes_perm, store=store)
+    all_egenes_tasks = gtex_qtl.pipeline.main()
+    all_egenes_files = galp.run(*all_egenes_tasks, store=store)
+    all_egenes = [{
+        pipeline: pd.read_table(file, compression='gzip')
+        for pipeline, file in egenes_files.items()
+        } for egenes_files in all_egenes_files
+        ]
+    all_egenes_perm, all_egenes_ic = all_egenes
 
     vs_egenes_peer_cmk(all_egenes_ic).write_image(
             os.path.join(output, 'egenes_peer_cmk.svg')

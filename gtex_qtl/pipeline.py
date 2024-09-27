@@ -147,7 +147,7 @@ def main() -> tuple[dict, dict]:
                 )
 
     # Pipeline variants with CMK autoregression inside caller
-    alt_qtl['auto'] = run_qtl(
+    alt_qtl['auto_cmk'] = run_qtl(
                 expression_bed=ext_residualized_expr, # Already regressed expression
                 gt_covariates_file=ext_covariates_file, # regress gt in Ext only
                 gx_covariates_file=None, # Gx is already regressed
@@ -163,21 +163,22 @@ def main() -> tuple[dict, dict]:
             **alt_qtl
             }
 
-    all_egenes_perm = compare.all_egenes({
+    all_egenes_perm = {
         'published': downloads.get_published_tissue_egenes('Whole_Blood'),
         'reproduction': all_qtl['reproduction'][compare.EGENES],
         'reimplementation (perm)': all_qtl['reimplementation']['egenes_perm'],
         'reimplementation (interchrom)': all_qtl['reimplementation']['egenes_ic'],
         'autoregression': all_qtl['auto']['egenes_perm'],
-        })
+        'autoregression (cmk)': all_qtl['auto_cmk']['egenes_perm'],
+        }
 
     # All runs with comparable inter-chrom statistics
     qtls_ic = {'reimplementation': reference_qtl, **alt_qtl}
 
     # Gene-level summaries for all inter-chrom runs
-    all_egenes_ic = compare.all_egenes({
+    all_egenes_ic = {
         k: qtl['egenes_ic'] for k, qtl in qtls_ic.items()
-        })
+        }
 
 
     return all_egenes_perm, all_egenes_ic

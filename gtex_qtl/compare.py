@@ -216,16 +216,6 @@ def count_egenes(results):
         )
 
 @step
-def all_egenes(egenes_files):
-    """
-    Extract gene summaries computed by permutation
-    """
-    return {
-        pipeline: pd.read_table(file, compression='gzip')
-        for pipeline, file in egenes_files.items()
-        }
-
-@step
 def all_pairs_adjusted_hist(qtl):
     """
     Counts of per-gene adjusted p-values for all associations in a qtl run

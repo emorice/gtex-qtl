@@ -24,9 +24,10 @@ DEFAULT_QTL_TOOL_CONFIG: QtlToolConfigDict = {
     'qtl_core_config': None
     }
 
-@step(vtag='0.4 fix fix dofs mle')
+@step(vtag='0.6 accept missing gx covs')
 def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
-        gx_covariates_file: str, qtl_tool_config: QtlToolConfigDict | None = None):
+        gx_covariates_file: str | None, qtl_tool_config: QtlToolConfigDict | None =
+        None, autoregress: bool = False):
     """
     Meta step to create the chunked qtl calling graph
 
@@ -49,6 +50,8 @@ def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
                 added unmodified to the result files
             - **qtl_core_config**: dictionnary of further options to pass to
                 :func:`gtex_qtl.qtl.call_qtls`
+        autoregress: whether to include leave-one-gene-out regression in the
+            controls, for both genotype and expression.
 
     """
     merged_qtl_tool_config = DEFAULT_QTL_TOOL_CONFIG  | (qtl_tool_config or {})
@@ -60,13 +63,14 @@ def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
     return merge_qtl([
         call_qtl_bin(genotype_vcf, expression_bed, gt_covariates_file,
             gx_covariates_file, window,
-            merged_qtl_tool_config)
+            merged_qtl_tool_config, autoregress)
         for window in windows])
 
-@step(vtag='0.3 fix fix dofs mle')
+@step(vtag='0.5 accept missing gx covs')
 def call_qtl_bin(genotype_vcf: str, expression_bed: str,
-        gt_covariates_file: str, gx_covariates_file: str,
-        window: tuple[int, int], qtl_tool_config: QtlToolConfigDict):
+        gt_covariates_file: str, gx_covariates_file: str | None,
+        window: tuple[int, int], qtl_tool_config: QtlToolConfigDict,
+        autoregress: bool):
     """
     Run the qtl caller on one chunk, and write down the results to disk
     """
@@ -78,11 +82,24 @@ def call_qtl_bin(genotype_vcf: str, expression_bed: str,
         gx_covariates_df = pd.read_table(gx_covariates_file)
     expression_df = pd.read_table(expression_bed)
 
+    gt_regressors: list[qtl.Regressor] = [
+            {'method': 'external', 'data': gt_covariates_df}]
+
+    gx_regressors: list[qtl.Regressor] = []
+    if gx_covariates_df is not None:
+        gx_regressors.append(
+            {'method': 'external', 'data': gx_covariates_df}
+            )
+    if autoregress:
+        gt_regressors.append({'method': 'auto', 'data': None})
+        gx_regressors.append({'method': 'auto', 'data': None})
+    config = (qtl_tool_config['qtl_core_config'] or {}).copy()
+    config['genotype_regressors'] = gt_regressors
+    config['expression_regressors'] = gx_regressors
+
     pairs, summary_perm, summary_ic = qtl.call_qtls(
             (expression_df, qtl_tool_config['bed_fixed_fields']),
-            window, genotype_vcf,
-            gt_covariates_df, gx_covariates_df,
-            qtl_config=qtl_tool_config['qtl_core_config']
+            window, genotype_vcf, qtl_config=config
             )
 
     # pairs can be huge, so write it back and compress it

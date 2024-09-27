@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gtex_qtl.qtl import call_qtls
+from gtex_qtl.qtl import call_qtls, Regressor
 
 @pytest.fixture
 def vcf(tmp_path):
@@ -73,11 +73,11 @@ def test_call_qtls(vcf) -> None:
             for i in range(n_samples)
         })
 
-    gt_regressors = [
+    gt_regressors: list[Regressor] = [
             { 'method': 'external', 'data': covariates},
             { 'method': 'auto', 'data': None}
             ]
-    gx_regressors = [
+    gx_regressors: list[Regressor] = [
             { 'method': 'external', 'data': covariates},
             { 'method': 'auto', 'data': None}
             ]

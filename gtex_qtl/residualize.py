@@ -2,12 +2,16 @@
 Pipeline fork demonstrating pre-residualization of expression
 """
 
+from typing import TypedDict
+
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import galp
 from galp import step
 import gemz_galp.models
+import gemz.models
 
 from . import stats
 
@@ -103,3 +107,65 @@ def split_covariates(combined_covariates_file):
     ext_df.to_csv(ext_path, sep='\t', index=False)
 
     return inf_path, ext_path
+
+class CMKParamsDict(TypedDict):
+    """
+    Prameters optimized from CMK
+    """
+    groups_x: npt.NDArray
+    compact_covariance_kk: npt.NDArray
+    data_vars_x: npt.NDArray
+
+@step(items=2)
+def get_cmk_parameters(prepared_expression_path: str, covariates_path: str
+        ) -> tuple[str, CMKParamsDict]:
+    """
+    Regress expression on covariates, optimize CMK parameters on residuals
+
+    Returns the residuals (as a path) and the CMK parameters (as an inline dict
+    of arrays).
+    """
+    # Read expression
+    samples, expr_gs, expr_meta = read_expression(prepared_expression_path)
+
+    # Read covariates
+    cov_cs = read_covariates(samples, covariates_path)
+
+    # Regress expression on covariates
+    # Note: this will add an intercept before regressing
+    res_gs = stats.regress(expr_gs, cov_cs)
+
+    # Save residuals
+    residuals_path = _residualize_writeback(res_gs.T, samples, expr_meta)
+
+    # Run CMK/100
+    cmk_fit = gemz.models.cmk.fit(res_gs.T, 100)
+
+    if cmk_fit['aborted']:
+        raise RuntimeError(f'CMK fit failed ({cmk_fit["aborted"]}): {cmk_fit["errors"]}')
+
+    params: CMKParamsDict = {
+            'groups_x': np.array(cmk_fit['data']['groups']),
+            'compact_covariance_kk': np.array(cmk_fit['state']['compact_covariance']),
+            'data_vars_x': np.array(cmk_fit['state']['data_vars'])
+            }
+
+    return residuals_path, params
+
+def make_weight_function(params: CMKParamsDict):
+    """
+    Return a weight calculation function for each gene to use with the
+    autoregression feature of the QTL caller
+    """
+    def get_weights(gene_index: int) -> tuple[float, npt.NDArray]:
+        target_group = params['groups_x'][gene_index]
+        # D1 is the predicted, D2 the predictor
+        weights_x = np.take_along_axis(
+                params['compact_covariance_kk'][target_group, :],
+                params['groups_x'],
+                axis=0)
+        weights_x[gene_index] = 0
+        # Data vars is a multiplier for both identity and groups, so we can just
+        # drop it
+        return 1.0, weights_x
+    return get_weights

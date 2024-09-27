@@ -122,6 +122,13 @@ def main() -> tuple[dict, dict]:
             for shorthand, model_spec in model_specs.items()
             }
 
+    # Regress only on external covariates, then fit model to obtain parameters
+    ext_residualized_expr, cmk_params = residualize.get_cmk_parameters(
+            prepared_expression[0],
+            ext_covariates_file,
+            )
+
+    # Pipeline variants with pre-residualisation
     alt_qtl = {
             shorthand: run_qtl(
                 expression_bed=expression,
@@ -130,11 +137,21 @@ def main() -> tuple[dict, dict]:
                 )
             for shorthand, expression in residualized_expressions.items()
             }
+
+    # Pipeline variant with autoregression inside caller
     alt_qtl['auto'] = run_qtl(
                 expression_bed=prepared_expression[0],
                 gt_covariates_file=ext_covariates_file, # regress gt in Ext only
                 gx_covariates_file=ext_covariates_file, # regress gx in Ext only
                 autoregress=True, # regress both on all genes but target
+                )
+
+    # Pipeline variants with CMK autoregression inside caller
+    alt_qtl['auto'] = run_qtl(
+                expression_bed=ext_residualized_expr, # Already regressed expression
+                gt_covariates_file=ext_covariates_file, # regress gt in Ext only
+                gx_covariates_file=None, # Gx is already regressed
+                autoregress={'cmk_params': cmk_params}, # regress both with CMK weights
                 )
 
     # 6.3) Gather runs

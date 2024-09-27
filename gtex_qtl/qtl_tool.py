@@ -8,7 +8,7 @@ import pandas as pd
 import galp
 from galp import step
 
-from . import qtl
+from . import qtl, residualize
 
 class QtlToolConfigDict(TypedDict, total=False):
     """
@@ -27,7 +27,7 @@ DEFAULT_QTL_TOOL_CONFIG: QtlToolConfigDict = {
 @step(vtag='0.6 accept missing gx covs')
 def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
         gx_covariates_file: str | None, qtl_tool_config: QtlToolConfigDict | None =
-        None, autoregress: bool = False):
+        None, autoregress: bool | dict = False):
     """
     Meta step to create the chunked qtl calling graph
 
@@ -51,7 +51,9 @@ def call_qtl(genotype_vcf: str, expression_bed: str, gt_covariates_file: str,
             - **qtl_core_config**: dictionnary of further options to pass to
                 :func:`gtex_qtl.qtl.call_qtls`
         autoregress: whether to include leave-one-gene-out regression in the
-            controls, for both genotype and expression.
+            controls, for both genotype and expression. Can be a dict with a key
+            indicating the precise method and value the auxiliary data for said
+            method.
 
     """
     merged_qtl_tool_config = DEFAULT_QTL_TOOL_CONFIG  | (qtl_tool_config or {})
@@ -91,8 +93,17 @@ def call_qtl_bin(genotype_vcf: str, expression_bed: str,
             {'method': 'external', 'data': gx_covariates_df}
             )
     if autoregress:
-        gt_regressors.append({'method': 'auto', 'data': None})
-        gx_regressors.append({'method': 'auto', 'data': None})
+        if autoregress is True:
+            auto_data = None
+        elif isinstance(autoregress, dict) and 'cmk_params' in autoregress:
+            auto_data = residualize.make_weight_function(
+                autoregress['cmk_params']
+                )
+        else:
+            raise ValueError(f'Bad autoregress strategy: {autoregress!r}')
+
+        gt_regressors.append({'method': 'auto', 'data': auto_data})
+        gx_regressors.append({'method': 'auto', 'data': auto_data})
     config = (qtl_tool_config['qtl_core_config'] or {}).copy()
     config['genotype_regressors'] = gt_regressors
     config['expression_regressors'] = gx_regressors

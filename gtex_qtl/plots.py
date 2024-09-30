@@ -157,7 +157,7 @@ def vs_egenes_peer_cmk(all_egenes_ic: dict[str, pd.DataFrame]) -> go.Figure:
     """
     return vs_egenes(all_egenes_ic, (
         ('reimplementation', 'PEER'),
-        ('auto_cmk', 'cmk')
+        ('auto_cmk', 'CMK')
         ))
 
 def vs_egenes(all_egenes: dict[str, pd.DataFrame], alts) -> go.Figure:
@@ -208,6 +208,39 @@ def vs_egenes(all_egenes: dict[str, pd.DataFrame], alts) -> go.Figure:
         }
     })
 
+def vs_dofs(all_egenes_perm: dict[str, pd.DataFrame]) -> go.Figure:
+    """
+    Comparison of degrees of freedom
+    """
+    series_x = all_egenes_perm['reimplementation (perm)']['true_df']
+    series_y = all_egenes_perm['reimplementation (interchrom)']['true_df']
+
+    return go.Figure([
+        go.Scattergl(
+            x=series_x,
+            y=series_y,
+            mode='markers',
+            marker={'symbol': 'circle', 'size': 1, 'opacity': 1.},
+            showlegend=False,
+            ),
+        go.Scattergl(
+            x=series_x,
+            y=series_x,
+            mode='lines',
+            line={'width': template.PX_RULE, 'color': 'grey'},
+            showlegend=False,
+            )
+        ], {
+            'xaxis': {
+                'title': 'Estimated res. degrees of freedom (Permutation)',
+                },
+            'yaxis': {
+                'title': 'Estimated res. degrees of freedom (Inter-chrom.)',
+                'scaleanchor': 'x',
+                'scaleratio': 1,
+                },
+            })
+
 def export_all_plots(store: str, output: str) -> None:
     """
     Run all the graph generating code and create svg files
@@ -233,6 +266,10 @@ def export_all_plots(store: str, output: str) -> None:
 
     vs_egenes_interchrom(all_egenes_perm).write_image(
             os.path.join(output, 'egenes_interchrom.svg')
+            )
+
+    vs_dofs(all_egenes_perm).write_image(
+            os.path.join(output, 'dofs.svg')
             )
 
 def main():
